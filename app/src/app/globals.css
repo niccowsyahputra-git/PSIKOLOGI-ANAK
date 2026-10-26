@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+/**
+ * Calm, low-contrast pastel palette (PRD NFR-02): sage, soft blue and cream.
+ * Every token is defined here so screens and future print layouts stay
+ * consistent without importing a component library.
+ */
+@theme {
+  --color-cream-50: #fdfbf6;
+  --color-cream-100: #f7f2e7;
+  --color-cream-200: #efe7d6;
+  --color-cream-300: #e2d6bf;
+
+  --color-sage-50: #f2f6f0;
+  --color-sage-100: #e3ede0;
+  --color-sage-200: #c9dcc4;
+  --color-sage-300: #a8c5a1;
+  --color-sage-500: #6f9269;
+  --color-sage-600: #55744f;
+  --color-sage-700: #40593c;
+
+  --color-sky-soft-50: #f1f6fa;
+  --color-sky-soft-100: #e2edf5;
+  --color-sky-soft-200: #c8dced;
+  --color-sky-soft-500: #6d93b3;
+  --color-sky-soft-600: #527792;
+
+  --color-clay-100: #f6e6e0;
+  --color-clay-500: #b5785f;
+  --color-clay-600: #965c45;
+
+  --color-ink-900: #2b342f;
+  --color-ink-700: #46524b;
+  --color-ink-500: #6b7871;
+  --color-ink-300: #9aa6a0;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-cream-50);
+    color: var(--color-ink-900);
+    font-family: var(--font-sans);
+  }
+
+  /* Keyboard focus must always be visible (accessibility, section 11.5). */
+  :focus-visible {
+    outline: 2px solid var(--color-sage-600);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-sage-200);
+    color: var(--color-ink-900);
+  }
+}
+
+/* Reports are printed from the browser on A4 (FR-14); no app chrome on paper. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+  }
+}
