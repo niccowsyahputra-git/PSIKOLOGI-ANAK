@@ -2,8 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { INSTRUMENTS, type Module } from "../../src/lib/instruments";
 
 /** Fictional test account, seeded only in the isolated e2e installation. */
-async function login(page: Page, identity = "a") {
-  await page.goto("/login");
+async function login(page: Page, identity = "a", origin = "") {
+  await page.goto(`${origin}/login`);
   await page.locator("#email").fill(`e2e-${identity}@panti.test`);
   await page.locator("#password").fill("FictionalE2e2026!");
   await page.getByRole("button", { name: "Masuk", exact: true }).click();
@@ -118,6 +118,37 @@ test("module A drawing, autosave, child/guardian handoff and staff comparison", 
   await expect(page.getByText("Jawaban fiktif W05", { exact: true })).toBeVisible();
   await expect(page.getByText("Dibacakan", { exact: false }).first()).toBeVisible();
 });
+
+for (const hostname of ["localhost", "127.0.0.1"]) {
+  test(`child registration accepts ${hostname} with localhost configured`, async ({ page }) => {
+    const origin = `http://${hostname}:3100`;
+    await login(page, "b", origin);
+    await page.goto(`${origin}/children/new`);
+    const name = `Anak Fiktif Origin ${hostname}`;
+    await page.getByLabel("Nama anak", { exact: true }).fill(name);
+    await page.getByLabel("Hanya usia perkiraan").check();
+    await page.getByLabel("Usia perkiraan (tahun)").fill("10");
+    const saved = page.waitForResponse((response) =>
+      response.url() === `${origin}/api/children` && response.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Simpan profil anak" }).click();
+    expect((await saved).status()).toBe(201);
+    await expect(page).toHaveURL(/\/children\/[^/]+$/);
+    expect(new URL(page.url()).origin).toBe(origin);
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+
+    // An authenticated session must still fail the guard for cross-site/untrusted origins.
+    for (const headers of [
+      { origin: "http://evil.test:3100", "sec-fetch-site": "same-origin" },
+      { origin: `http://${hostname}:3101`, "sec-fetch-site": "same-origin" },
+      { origin, "sec-fetch-site": "cross-site" },
+    ]) {
+      const denied = await page.request.post(`${origin}/api/children`, { headers, data: {} });
+      expect(denied.status()).toBe(403);
+      expect((await denied.json()).error.code).toBe("FORBIDDEN");
+    }
+  });
+}
 
 for (const [module, age] of [["B", 10], ["C", 15]] as const) {
   test(`module ${module} text/likert, sensitive skips and saved results`, async ({ page }) => {

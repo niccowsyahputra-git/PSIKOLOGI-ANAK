@@ -14,7 +14,8 @@ async function main() {
   const root = mkdtempSync(path.resolve("var/e2e-"));
   Object.assign(process.env, {
     NODE_ENV: "production", APP_MODE: "local-development", LOCAL_ONLY: "true",
-    APP_BASE_URL: "http://127.0.0.1:3100", BETTER_AUTH_URL: "http://127.0.0.1:3100",
+    // Mirror the dev installation: configured localhost, server/browser IPv4 loopback.
+    APP_BASE_URL: "http://localhost:3100", BETTER_AUTH_URL: "http://localhost:3100",
     DATABASE_PROVIDER: "local", DATABASE_URL: `file:${path.join(root, "test.db")}`,
     STORAGE_PROVIDER: "local", LOCAL_STORAGE_ROOT: path.join(root, "storage"), BACKUP_ROOT: path.join(root, "backups"),
     LIVE_INTAKE_ENABLED: "false", AI_MODE: "mock",

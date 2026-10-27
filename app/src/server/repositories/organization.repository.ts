@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { AppDatabase } from "@/lib/db";
 import { organizations } from "@/lib/db/domain-schema";
 
@@ -28,6 +28,52 @@ export async function findOrganizationById(
     .from(organizations)
     .where(eq(organizations.id, organizationId))
     .limit(1);
+  return rows[0] ?? null;
+}
+
+export type OrganizationProfilePatch = Partial<
+  Pick<
+    OrganizationRow,
+    | "name"
+    | "address"
+    | "contact"
+    | "phone"
+    | "email"
+    | "leaderName"
+    | "leaderTitle"
+    | "registrationNumber"
+    | "printNote"
+    | "timezone"
+  >
+>;
+
+/**
+ * Optimistic concurrency per section 9.1: the update only applies when the
+ * caller still holds the revision it read, and `revision` is bumped in the same
+ * statement. Returns null when another session saved first.
+ */
+export async function updateOrganizationProfile(
+  db: AppDatabase,
+  params: {
+    organizationId: string;
+    expectedRevision: number;
+    patch: OrganizationProfilePatch;
+  },
+): Promise<OrganizationRow | null> {
+  const rows = await db
+    .update(organizations)
+    .set({
+      ...params.patch,
+      revision: sql`${organizations.revision} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(organizations.id, params.organizationId),
+        eq(organizations.revision, params.expectedRevision),
+      ),
+    )
+    .returning();
   return rows[0] ?? null;
 }
 

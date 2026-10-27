@@ -6,7 +6,7 @@ import { migrate } from "drizzle-orm/libsql/migrator";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closeDb, getDbReady, type AppDatabase } from "@/lib/db";
-import { assessments, intakeSessions } from "@/lib/db/assessment-schema";
+import { assessments, consents, intakeSessions } from "@/lib/db/assessment-schema";
 import { resetEnvCacheForTests } from "@/lib/env";
 import { ConflictError, ForbiddenError, NotFoundError, NotReadyError, UnauthenticatedError, ValidationError } from "@/lib/errors";
 import { INSTRUMENTS, type Answer } from "@/lib/instruments";
@@ -205,10 +205,45 @@ describe("child and guardian questionnaires", () => {
   });
 });
 
+describe("append-only media and consent history", () => {
+  it("adds a later paper photo without changing the submitted answers", async () => {
+    const id = await fictionalChild({ estimatedAge: 8, ageReferenceDate: today });
+    const c = await service.createCycle(pengasuh, id);
+    const a = await service.createAssessment(pengasuh, c.id, { target: "child" });
+    const actor = { type: "staff" as const, membershipId: pengasuh.membershipId };
+    const submitted = await service.saveAssessment(db, pengasuh.organizationId, a.id, { revision: a.revision, answers: [
+      { itemId: "A01", kind: "emotion", state: "skipped", assistance: "none", value: null },
+      { itemId: "A02", kind: "media", state: "answered", assistance: "none", activityMode: "paper_pending", initialAttachmentId: null },
+      { itemId: "A03", kind: "text", state: "skipped", assistance: "none", value: null },
+    ] }, actor, true);
+    const late = await uploadMedia(pengasuh.organizationId, a.id, await png(), actor, true);
+    const detail = await service.resultDetail(pengasuh, a.id);
+    expect(detail.assessment.answersJson).toBe(submitted.answersJson);
+    expect(detail.assessment.revision).toBe(submitted.revision);
+    expect(detail.events.some((event) => event.eventType === "late_uploaded" && event.attachmentId === late.id)).toBe(true);
+    expect(detail.media.map((media) => media.id)).toContain(late.id);
+    await db.update(assessments).set({ status: "withdrawn" }).where(eq(assessments.id, a.id));
+    await expect(service.resultDetail(pengasuh, a.id)).rejects.toThrow(ForbiddenError);
+    await expect(mediaContent(pengasuh.organizationId, late.id)).rejects.toThrow(NotFoundError);
+  });
+
+  it("rejects MIME spoofing and retains append-only consent decisions", async () => {
+    const correction = (await service.cycleDetail(pengasuh, cycleId)).full.find((row) => row.status === "draft" && row.target === "child")!;
+    const actor = { type: "staff" as const, membershipId: pengasuh.membershipId };
+    await expect(uploadMedia(pengasuh.organizationId, correction.id, new File(["not an image"], "bad.png", { type: "image/png" }), actor)).rejects.toThrow(ValidationError);
+    const consent = await service.addConsent(pengasuh, cycleId, { subjectType: "child", subjectId: childId, type: "assent", status: "declined", noticeVersion: "test-v1", authorityBasis: "Fictional test only", actorType: "child" });
+    await expect(db.update(consents).set({ status: "granted" }).where(eq(consents.id, consent.id))).rejects.toThrow();
+    await expect(db.delete(consents).where(eq(consents.id, consent.id))).rejects.toThrow();
+  });
+});
+
 describe("session lifecycle", () => {
   it("stops a revoked session", async () => {
     const draft = await service.createAssessment(pengasuh, cycleId, { target: "guardian", guardianId, parentAssessmentId: guardianAssessmentId, correctionReason: "Wali ingin menambah jawaban" });
     const { created, secret } = await startSession(draft.id);
+    await db.update(intakeSessions).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(intakeSessions.id, created.id));
+    await expect(service.resolveIntake(secret)).rejects.toThrow(UnauthenticatedError);
+    await db.update(intakeSessions).set({ expiresAt: new Date(Date.now() + 100000) }).where(eq(intakeSessions.id, created.id));
     await service.revokeSession(pengasuh, created.id, { reason: "Perangkat dikembalikan" });
     await expect(service.resolveIntake(secret)).rejects.toThrow(UnauthenticatedError);
   });

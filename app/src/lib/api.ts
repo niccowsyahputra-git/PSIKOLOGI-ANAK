@@ -3,6 +3,7 @@ import { NextResponse, connection } from "next/server";
 import { ZodError } from "zod";
 import {
   DomainError,
+  ForbiddenError,
   UnauthenticatedError,
   ValidationError,
 } from "./errors";
@@ -31,6 +32,30 @@ const PRIVATE_HEADERS = {
   "Cache-Control": "no-store, max-age=0",
   "X-Content-Type-Options": "nosniff",
 } as const;
+
+/** Accept configured origins and their exact loopback aliases, never a request-supplied host. */
+export function assertMutationOrigin(request: Request, trustedUrls: readonly string[]): void {
+  const loopbackHosts = ["localhost", "127.0.0.1", "[::1]"];
+  const allowed = new Set<string>();
+  for (const value of trustedUrls) {
+    const url = new URL(value);
+    allowed.add(url.origin);
+    if (loopbackHosts.includes(url.hostname)) {
+      // NextURL normalizes 127.0.0.1 to localhost; the browser's Origin header does not.
+      for (const hostname of loopbackHosts) {
+        url.hostname = hostname;
+        allowed.add(url.origin);
+      }
+    }
+  }
+  const origin = request.headers.get("origin");
+  if (
+    (origin !== null && !allowed.has(origin)) ||
+    request.headers.get("sec-fetch-site") === "cross-site"
+  ) {
+    throw new ForbiddenError("Permintaan harus berasal dari aplikasi lokal");
+  }
+}
 
 export function jsonOk<TData, TMeta>(
   data: TData,

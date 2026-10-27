@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
-import { jsonOk, withApiHandler } from "@/lib/api";
+import { assertMutationOrigin, jsonOk, withApiHandler } from "@/lib/api";
 import { getStaffSession, requireStaffSessionForApi, toStaffActor } from "@/lib/authz";
 import { getDbReady } from "@/lib/db";
 import * as s from "@/lib/db/assessment-schema";
@@ -20,18 +20,16 @@ async function body(request: Request) {
   const raw = await request.text(); if (raw.length > 100000) throw new ValidationError("Permintaan terlalu besar");
   try { return JSON.parse(raw); } catch { throw new ValidationError("JSON tidak valid"); }
 }
-function mutationOrigin(request: NextRequest) {
-  // Same-origin only: the configured base URLs plus the host the browser actually used (localhost vs 127.0.0.1).
-  const origin = request.headers.get("origin"); const allowed = new Set([new URL(getEnv().appBaseUrl).origin, new URL(getEnv().betterAuthUrl).origin, request.nextUrl.origin]);
-  if (origin && !allowed.has(origin) || request.headers.get("sec-fetch-site") === "cross-site") throw new ForbiddenError("Permintaan harus berasal dari aplikasi lokal");
-}
 async function uploadedFile(request: Request): Promise<{ file: File; assessmentId: string | null }> {
   if (Number(request.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES + 100000) throw new ValidationError("Gambar maksimal 5 MB");
   const form = await request.formData(); const file = form.get("file"); if (!(file instanceof File)) throw new ValidationError("Gambar diperlukan"); const id = form.get("assessmentId"); return { file, assessmentId: typeof id === "string" ? id : null };
 }
 const handler = withApiHandler(async (request: NextRequest, context: { params: Promise<{ domain: string[] }> }) => {
   const paths = (await context.params).domain; const [domain, id, action, extra] = paths; const method = request.method; if (paths.length > 4) throw new NotFoundError();
-  if (method !== "GET") mutationOrigin(request);
+  if (method !== "GET") {
+    const env = getEnv();
+    assertMutationOrigin(request, [env.appBaseUrl, env.betterAuthUrl]);
+  }
   const jar = await cookies();
   if (domain === "intake") {
     if (id === "exchange" && method === "POST") {

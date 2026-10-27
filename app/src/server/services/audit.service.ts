@@ -20,6 +20,10 @@ export type AuditEventName =
   | "staff.deactivate"
   | "staff.reactivate"
   | "staff.credential_verify"
+  | "settings.general_update"
+  | "settings.ai_update"
+  | "settings.ai_test"
+  | "settings.ai_reset"
   | "auth.login"
   | "auth.logout";
 

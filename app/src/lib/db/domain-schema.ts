@@ -4,6 +4,7 @@ import {
   check,
   index,
   integer,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -41,15 +42,91 @@ export const organizations = sqliteTable("organizations", {
   name: text("name").notNull(),
   address: text("address"),
   contact: text("contact"),
+  phone: text("phone"),
+  email: text("email"),
+  /** Person responsible for the letterhead signature block (FR-17). */
+  leaderName: text("leader_name"),
+  leaderTitle: text("leader_title"),
+  registrationNumber: text("registration_number"),
+  /** Optional line printed under the letterhead, e.g. an archive reference. */
+  printNote: text("print_note"),
   timezone: text("timezone").notNull().default("Asia/Jakarta"),
   /**
    * Organization logo is not bound to a child (PRD section 9.2). The foreign
    * key to `attachments` is added by the media migration in T05.
    */
   logoAttachmentId: text("logo_attachment_id"),
+  revision: integer("revision").notNull().default(1),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+/**
+ * Dynamic AI configuration (PRD section 9.2 `ai_settings`, FR-10). The API key
+ * is stored encrypted and never leaves the server; `keyFingerprint` is a
+ * one-way digest so the configuration fingerprint can be recomputed without
+ * decrypting the secret.
+ */
+export const aiSettings = sqliteTable(
+  "ai_settings",
+  {
+    id: id(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    mode: text("mode", {
+      enum: ["mock", "local_endpoint", "remote_endpoint"],
+    })
+      .notNull()
+      .default("mock"),
+    providerName: text("provider_name").notNull().default("Mock lokal"),
+    baseUrl: text("base_url"),
+    model: text("model"),
+    /** Request path appended to `base_url` for OpenAI-compatible services. */
+    extension: text("extension").notNull().default("/v1/chat/completions"),
+    keyCiphertext: text("key_ciphertext"),
+    keyVersion: integer("key_version"),
+    keyFingerprint: text("key_fingerprint"),
+    temperature: real("temperature").notNull().default(0.2),
+    maxTokens: integer("max_tokens").notNull().default(2000),
+    timeoutSeconds: integer("timeout_seconds").notNull().default(45),
+    dailyLimit: integer("daily_limit").notNull().default(20),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+    settingsVersion: integer("settings_version").notNull().default(1),
+    promptVersion: text("prompt_version").notNull().default("p1"),
+    lastTestFingerprint: text("last_test_fingerprint"),
+    lastTestStatus: text("last_test_status", {
+      enum: ["untested", "passed", "failed"],
+    })
+      .notNull()
+      .default("untested"),
+    lastTestAt: integer("last_test_at", { mode: "timestamp_ms" }),
+    revision: integer("revision").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("ai_settings_organization_unique").on(table.organizationId),
+    check(
+      "ai_settings_mode_check",
+      sql`mode in ('mock','local_endpoint','remote_endpoint')`,
+    ),
+    check(
+      "ai_settings_test_status_check",
+      sql`last_test_status in ('untested','passed','failed')`,
+    ),
+    check("ai_settings_enabled_check", sql`enabled in (0,1)`),
+    check(
+      "ai_settings_bounds_check",
+      sql`temperature >= 0 and temperature <= 1 and max_tokens between 1 and 2000 and timeout_seconds between 5 and 60 and daily_limit between 1 and 100`,
+    ),
+    // A real endpoint cannot be enabled without the URL and model it was tested with.
+    check(
+      "ai_settings_endpoint_check",
+      sql`mode = 'mock' or enabled = 0 or (base_url is not null and model is not null)`,
+    ),
+  ],
+);
 
 export const staffMemberships = sqliteTable(
   "staff_memberships",
