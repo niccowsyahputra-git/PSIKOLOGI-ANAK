@@ -39,15 +39,15 @@ export async function GeneralSettingsView() {
               : "Mode demonstrasi fiktif"}
           </Badge>
         </div>
-        <ul className="space-y-2 text-sm">
+        <ul className="space-y-2 text-[13px]">
           {readiness.checks.map((check) => (
             <li
               key={check.key}
-              className="flex flex-col gap-1 rounded-xl bg-cream-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-1 rounded-2xl bg-cream-50 px-3 py-2.5"
             >
               <span className="font-medium text-ink-900">{check.label}</span>
-              <span className="flex items-center gap-2 text-ink-500">
-                <span className="sm:text-right">{check.detail}</span>
+              <span className="flex flex-wrap items-center gap-2 text-[12px] text-ink-500">
+                <span className="min-w-0 flex-1">{check.detail}</span>
                 <Badge tone={check.status === "ok" ? "sage" : "clay"}>
                   {check.status === "ok" ? "Siap" : "Perlu dilengkapi"}
                 </Badge>
@@ -55,7 +55,7 @@ export async function GeneralSettingsView() {
             </li>
           ))}
         </ul>
-        <p className="text-xs text-ink-500">
+        <p className="text-[11px] leading-relaxed text-ink-500">
           Daftar ini hanya status operasional. Penggunaan data nyata tetap bergantung pada
           instrumen yang disetujui, dasar kewenangan dan SOP privasi panti — bukan pada
           kelengkapan kop.

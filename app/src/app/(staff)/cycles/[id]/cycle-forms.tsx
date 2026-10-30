@@ -31,7 +31,7 @@ export function ConsentForm({ cycleId, subjects }: { cycleId: string; subjects: 
   if (!open) return <button type="button" className={secondaryButtonClassName} onClick={() => setOpen(true)}>Catat persetujuan</button>;
   return (
     <form onSubmit={submit} className="space-y-3 rounded-2xl border border-cream-200 bg-cream-50 p-4">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3">
         <Field label="Untuk siapa" htmlFor="subject"><select id="subject" name="subject" required defaultValue="" className={inputClassName}><option value="" disabled>Pilih</option>{subjects.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({entry.type === "child" ? "anak" : "wali"})</option>)}</select></Field>
         <Field label="Jenis" htmlFor="type"><select id="type" name="type" required defaultValue="" className={inputClassName}><option value="" disabled>Pilih</option>{Object.entries(CONSENT_TYPES).filter(([value]) => value !== "ai").map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
         <Field label="Keputusan" htmlFor="status"><select id="status" name="status" required defaultValue="" className={inputClassName}><option value="" disabled>Pilih keputusan</option>{Object.entries(CONSENT_STATUS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>

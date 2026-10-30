@@ -1,0 +1,142 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq, sql } from "drizzle-orm";
+import * as r from "@/server/services/response.service";
+import * as legacy from "@/server/services/assessment.service";
+import * as templates from "@/server/services/template.service";
+import * as s from "@/lib/db/response-schema";
+import { assessmentCycles } from "@/lib/db/assessment-schema";
+import { staffMemberships } from "@/lib/db/domain-schema";
+import { ForbiddenError, ConflictError, NotFoundError, UnauthenticatedError } from "@/lib/errors";
+import { newQuestion, type DynamicAnswer } from "@/lib/assessment-builder/definition";
+import { builderFixture, publishedTemplate, sampleDefinition } from "../helpers/builder-fixture";
+import sharp from "sharp";
+import { uploadResponseMedia, responseMediaContent, responseUploadBody } from "@/server/services/response-media.service";
+import { PermissionDeniedError } from "@/lib/permissions";
+let f: Awaited<ReturnType<typeof builderFixture>>;
+beforeAll(async () => { f = await builderFixture(); });
+afterAll(async () => { if (f) await f.cleanup(); });
+async function assigned() {
+  const template = await publishedTemplate(f);
+  const child = await legacy.createProfile(f.admin, "children", { name: "Anak dinamis fiktif", fictional: true, estimatedAge: 12, ageReferenceDate: "2026-10-01" });
+  await legacy.profileTransition(f.admin, "children", child.id, "verify", { revision: child.revision });
+  const cycle = await legacy.createCycle(f.admin, child.id);
+  const response = await r.createResponse(f.caregiver, { templateId: template.version.templateId, cycleId: cycle.id, target: "child" });
+  return { template, cycle, response };
+}
+const answer = (questionId: string, value: DynamicAnswer["value"]): DynamicAnswer => ({ questionId, value, state: "answered", assistance: "none", skipReason: null });
+const staff = () => ({ type: "staff" as const, staff: f.caregiver });
+async function session(id: string) { const link = await r.createResponseSession(f.caregiver, id); const exchanged = await r.exchangeDynamic(link.id, link.token); return { link, ...exchanged, row: await r.resolveDynamic(exchanged.secret) }; }
+describe("parallel dynamic collection engine", () => {
+  it("pins a reviewed version, rejects duplicate drafts, and isolates organizations", async () => {
+    const { template, cycle, response } = await assigned();
+    expect(response.contentHash).toBe(template.version.contentHash);
+    await expect(r.createResponse(f.caregiver, { templateId: template.version.templateId, cycleId: cycle.id, target: "child" })).rejects.toThrow(ConflictError);
+    await expect(r.responseDetail(f.outsider, response.id)).rejects.toThrow(NotFoundError);
+    await expect(r.saveResponse(response.organizationId, response.id, { revision: 1, answers: [] }, { type: "staff", staff: f.outsider })).rejects.toThrow(NotFoundError);
+    expect(await f.db.all(sql`PRAGMA foreign_key_check`)).toEqual([]);
+  });
+  it("enforces single-use exchange, replacement, cookie discriminator, and actor scope", async () => {
+    const a = await assigned(); const b = await assigned(); const active = await session(a.response.id);
+    await expect(r.exchangeDynamic(active.link.id, active.link.token)).rejects.toThrow(UnauthenticatedError);
+    await expect(r.resolveDynamic(active.secret.slice(3))).rejects.toThrow(UnauthenticatedError);
+    await expect(r.saveResponse(b.response.organizationId, b.response.id, { revision: 1, answers: [] }, { type: "participant", sessionId: active.row.id })).rejects.toThrow(NotFoundError);
+    await r.createResponseSession(f.admin, a.response.id);
+    await expect(r.resolveDynamic(active.secret)).rejects.toThrow(UnauthenticatedError);
+  });
+  it("clears hidden values and requires fresh responses on reveal", async () => {
+    const { template, response } = await assigned(); const [first, second] = template.definition.questions;
+    let saved = await r.saveResponse(response.organizationId, response.id, { revision: 1, answers: [answer(first.id, false), answer(second.id, "Rahasia fiktif")] }, staff());
+    saved = await r.saveResponse(response.organizationId, response.id, { revision: saved.response.revision, answers: [answer(first.id, true), answer(second.id, "STALE HIDDEN VALUE")] }, staff());
+    expect(saved.answers.find((a) => a.questionId === second.id)).toMatchObject({ state: "not_applicable", value: null });
+    expect(JSON.stringify(await r.responseDetail(f.admin, response.id))).not.toContain("STALE HIDDEN VALUE");
+    await expect(r.saveResponse(response.organizationId, response.id, { revision: saved.response.revision, answers: [answer(first.id, false), saved.answers.find((a) => a.questionId === second.id)] }, staff(), true)).rejects.toThrow();
+    await expect(r.saveResponse(response.organizationId, response.id, { revision: 1, answers: [] }, staff())).rejects.toThrow(ConflictError);
+  });
+  it("preserves v1 across publication and creates correction lineage with immutable answers", async () => {
+    const { response, template } = await assigned();
+    const submitted = await r.saveResponse(response.organizationId, response.id, { revision: 1, answers: [answer(template.definition.questions[0].id, true)] }, staff(), true);
+    const before = JSON.stringify(submitted.answers);
+    let v2 = await templates.cloneVersion(f.admin, template.version.templateId, { sourceVersionId: template.version.id });
+    v2.definition.questions[0].label = "Nouveau label";
+    v2 = await templates.saveDraft(f.admin, v2.version.id, { revision: v2.version.revision, definition: v2.definition });
+    v2 = await templates.transitionVersion(f.admin, v2.version.id, "submit-review", { revision: v2.version.revision, note: "Review version two" });
+    await templates.transitionVersion(f.psychologist, v2.version.id, "review", { revision: v2.version.revision, decision: "approved", note: "Approved for intake" });
+    await templates.transitionVersion(f.admin, v2.version.id, "publish", { revision: v2.version.revision, note: "Publish version two" });
+    const historical = await r.responseDetail(f.admin, response.id);
+    expect(historical.definition).toEqual(template.definition); expect(JSON.stringify(historical.answers)).toBe(before);
+    await expect(f.db.update(s.assessmentAnswers).set({ valueJson: "false" }).where(eq(s.assessmentAnswers.responseId, response.id))).rejects.toThrow();
+    await expect(f.db.delete(s.assessmentAnswers).where(eq(s.assessmentAnswers.responseId, response.id))).rejects.toThrow();
+    await expect(f.db.insert(s.assessmentAnswers).values({ responseId: response.id, templateVersionId: template.version.id, questionId: template.definition.questions[1].id, state: "answered", valueJson: '"tamper"', assistance: "none" })).rejects.toThrow();
+    await expect(f.db.update(s.assessmentResponses).set({ status: "draft", submittedAt: null }).where(eq(s.assessmentResponses.id, response.id))).rejects.toThrow();
+    const correction = await r.correctResponse(f.caregiver, response.id, { reason: "Correction of fictional response" });
+    expect(correction.parentResponseId).toBe(response.id); expect(correction.templateVersionId).toBe(template.version.id);
+  });
+  it("ordinary archival allows resume but explicit approval revocation blocks collection", async () => {
+    const { response, template } = await assigned(); const active = await session(response.id);
+    await templates.transitionVersion(f.admin, template.version.id, "archive", { revision: template.version.revision, note: "Stop new assignments" });
+    expect((await r.resolveDynamic(active.secret)).responseId).toBe(response.id);
+    await templates.transitionVersion(f.chair, template.version.id, "revoke", { revision: template.version.revision, note: "Stop collection immediately" });
+    await expect(r.resolveDynamic(active.secret)).rejects.toThrow(UnauthenticatedError);
+    await expect(r.saveResponse(response.organizationId, response.id, { revision: 1, answers: [] }, staff())).rejects.toThrow(ForbiddenError);
+  });
+  it("closing a cycle and withdrawing a response revoke sessions in database guards", async () => {
+    const a = await assigned(); const active = await session(a.response.id);
+    await f.db.update(assessmentCycles).set({ status: "closed" }).where(eq(assessmentCycles.id, a.cycle.id));
+    await expect(r.resolveDynamic(active.secret)).rejects.toThrow(UnauthenticatedError);
+    const b = await assigned(); const other = await session(b.response.id);
+    await r.withdrawResponse(f.chair, b.response.id, { reason: "Participant withdrew consent" });
+    await expect(r.resolveDynamic(other.secret)).rejects.toThrow(UnauthenticatedError);
+    await expect(r.responseDetail(f.admin, b.response.id)).rejects.toThrow(ForbiddenError);
+  });
+  it("supports authorized session revocation and ending an already revoked cookie", async () => {
+    const { response } = await assigned(); const active = await session(response.id);
+    await expect(r.revokeResponseSession(f.psychologist, active.link.id, { reason: "Not the session creator" })).rejects.toThrow(PermissionDeniedError);
+    await expect(r.revokeResponseSession(f.outsider, active.link.id, { reason: "Wrong organization" })).rejects.toThrow(NotFoundError);
+    await r.revokeResponseSession(f.caregiver, active.link.id, { reason: "Creator closes intake" });
+    await expect(r.resolveDynamic(active.secret)).rejects.toThrow(UnauthenticatedError);
+    expect(await r.endDynamicSession(active.secret)).toEqual({ ended: true });
+    const replacement = await session(response.id); await r.endDynamicSession(replacement.secret);
+    await expect(r.resolveDynamic(replacement.secret)).rejects.toThrow(UnauthenticatedError);
+  });
+  it("requires guardian media consent and rejects hidden, forged, oversized, and nonimage uploads", async () => {
+    const d = sampleDefinition(); d.allowImages = true;
+    const image = { ...newQuestion(d.sections[0].id, "file"), label: "Gambar dukungan", condition: { questionId: d.questions[0].id, operator: "equals" as const, value: true } }; d.questions.push(image);
+    const template = await publishedTemplate(f, d);
+    const child = await legacy.createProfile(f.admin, "children", { name: "Fictional consent fixture", fictional: false, estimatedAge: 12, ageReferenceDate: "2026-10-01" });
+    const guardian = await legacy.createProfile(f.admin, "guardians", { name: "Fictional guardian fixture", fictional: false });
+    await legacy.profileTransition(f.admin, "children", child.id, "verify", { revision: child.revision });
+    await legacy.profileTransition(f.admin, "guardians", guardian.id, "verify", { revision: guardian.revision });
+    await legacy.linkGuardian(f.admin, child.id, { guardianId: guardian.id, relationship: "Guardian" });
+    const c = await legacy.createCycle(f.admin, child.id);
+    await legacy.addAuthority(f.chair, c.id, { decision: "approved", lawfulBasisNote: "Fictional fixture consent gate" });
+    for (const [subjectType, subjectId, type] of [["child", child.id, "intake"], ["guardian", guardian.id, "intake"], ["child", child.id, "media"]]) await legacy.addConsent(f.admin, c.id, { subjectType, subjectId, type, status: "granted", actorType: "authorized_representative", noticeVersion: "fixture", authorityBasis: "Fictional fixture consent" });
+    const response = await r.createResponse(f.admin, { templateId: template.version.templateId, cycleId: c.id, target: "guardian", guardianId: guardian.id });
+    const data = [answer(d.questions[0].id, true)];
+    await r.saveResponse(response.organizationId, response.id, { revision: 1, answers: data }, staff());
+    const bytes = await sharp({ create: { width: 8, height: 8, channels: 3, background: "white" } }).jpeg().toBuffer();
+    const file = new File([new Uint8Array(bytes)], "fixture.jpg", { type: "image/jpeg" });
+    const upload = () => uploadResponseMedia(response.organizationId, response.id, image.id, file, staff());
+    await expect(upload()).rejects.toThrow(ForbiddenError);
+    await legacy.addConsent(f.admin, c.id, { subjectType: "guardian", subjectId: guardian.id, type: "media", status: "granted", actorType: "guardian", noticeVersion: "fixture", authorityBasis: "Guardian owns image consent" });
+    await expect(uploadResponseMedia(response.organizationId, response.id, image.id, new File(["<svg></svg>"], "image.svg", { type: "image/svg+xml" }), staff())).rejects.toThrow();
+    await expect(uploadResponseMedia(response.organizationId, response.id, image.id, new File([new Uint8Array(5 * 1024 * 1024 + 1)], "large.png", { type: "image/png" }), staff())).rejects.toThrow();
+    await expect(uploadResponseMedia(response.organizationId, response.id, image.id, new File(["not an image"], "fake.png", { type: "image/png" }), staff())).rejects.toThrow();
+    const saved = await upload();
+    await expect(responseMediaContent(response.organizationId, saved.id, staff())).rejects.toThrow(NotFoundError);
+    await r.saveResponse(response.organizationId, response.id, { revision: 2, answers: [...data, answer(image.id, saved.id)] }, staff());
+    const content = await responseMediaContent(response.organizationId, saved.id, staff());
+    expect(content.headers.get("cache-control")).toContain("no-store");
+    expect((await sharp(Buffer.from(await content.arrayBuffer())).metadata()).format).toBe("png");
+    await r.saveResponse(response.organizationId, response.id, { revision: 3, answers: [answer(d.questions[0].id, false), answer(image.id, saved.id)] }, staff());
+    await expect(responseMediaContent(response.organizationId, saved.id, staff())).rejects.toThrow(NotFoundError);
+    await expect(upload()).rejects.toThrow();
+    const form = new FormData(); form.append("questionId", image.id); form.append("questionId", image.id); form.set("file", file);
+    await expect(responseUploadBody(new Request("http://localhost/upload", { method: "POST", body: form }))).rejects.toThrow();
+  });
+  it("rejects inactive staff in services, not only HTTP handlers", async () => {
+    const { response } = await assigned();
+    await f.db.update(staffMemberships).set({ active: false }).where(eq(staffMemberships.id, f.caregiver.membershipId));
+    await expect(r.saveResponse(response.organizationId, response.id, { revision: 1, answers: [] }, staff())).rejects.toThrow(UnauthenticatedError);
+    await f.db.update(staffMemberships).set({ active: true }).where(eq(staffMemberships.id, f.caregiver.membershipId));
+  });
+});

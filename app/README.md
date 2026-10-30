@@ -48,6 +48,11 @@ npm run db:seed            # mencetak kata sandi demo satu kali
 | `npm run storage:check` | Cek direktori storage privat |
 | `npm run db:generate-auth-schema` | Regenerasi tabel Better Auth |
 
+`npm run db:migrate` membuat backup konsisten (`VACUUM INTO`, termasuk isi WAL
+yang sudah di-commit) ke `var/backups/migration-*` dan memverifikasi hash catatan
+historis sebelum menyentuh database. **Hentikan `npm run dev` / `npm start`
+lebih dahulu** — migrasi mengharapkan tidak ada penulis lain.
+
 ## Struktur penting
 
 ```
@@ -60,6 +65,29 @@ src/server/services/        aturan domain (staf, audit)
 migrations/                 SQL yang sama untuk lokal maupun fase cloud nanti
 var/                        database, storage, backup (diabaikan git)
 ```
+
+## Formulir asesmen dinamis
+
+Formulir dinamis berjalan **berdampingan** dengan modul asesmen lama A/B/C/W;
+modul lama tetap memakai pertanyaan di kode. Rincian schema, API, RBAC, semantik
+jawaban tersembunyi, penyiapan model lokal, dan cara menambah jenis pertanyaan
+baru ada di [`docs/assessment-builder.md`](docs/assessment-builder.md).
+
+Titik masuk di aplikasi:
+
+| Halaman | Isi |
+| --- | --- |
+| `/assessment-templates` | katalog template (cari + filter status), buat template baru |
+| `/assessment-templates/[id]/history` | daftar versi, riwayat publikasi, dan audit per template |
+| `/template-versions/[id]` | editor section/pertanyaan (drag-and-drop), panel properti, editor kondisi, panel AI, pratinjau desktop/mobile, transisi review → publish |
+| `/assessment-responses`, `/assessment-responses/[id]` | penugasan formulir, autosave, sesi peserta, koreksi, dan hasil |
+| `/intake`, `/intake/[sessionId]` | pengisian oleh peserta pada sesi bercakupan (versi template disematkan) |
+
+Pembagian izin (`src/lib/permissions.ts`): admin menyunting draft, menjalankan
+draf AI, dan memublikasikan; psikolog meninjau/menyetujui dan dapat mencabut;
+ketua dapat mencabut; pengasuh membaca versi terbit serta menugaskan dan
+mengisi response. AI hanya menghasilkan **kandidat draft** — admin menerima,
+menyunting, atau menolak tiap kandidat, dan tidak ada publikasi otomatis.
 
 ## Aturan yang ditegakkan saat ini
 

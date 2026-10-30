@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { ActionButton } from "@/components/action-button";
+import { DynamicResponseLinks } from "@/components/assessment-builder/response-links";
 import { Badge, Card, PageHeader, Skeleton } from "@/components/ui";
 import { requireStaffSession, toStaffActor } from "@/lib/authz";
 import { formatDateTime } from "@/lib/format";
@@ -22,7 +23,7 @@ async function GuardianDetail({ params }: { params: Promise<{ id: string }> }) {
         description={`${guardian.code} · Orang tua / wali. Asesmen wali selalu dimulai dari siklus anak yang didampingi.`}
         actions={<>{guardian.fictional ? <Badge tone="clay">Data fiktif</Badge> : null}<Badge tone={verified ? "sage" : "neutral"}>{verified ? "Terverifikasi" : guardian.profileState === "archived" ? "Diarsipkan" : "Draft"}</Badge>{guardian.profileState === "draft" ? <ActionButton path={`/api/guardians/${guardian.id}/verify`} data={{ revision: guardian.revision }}>Verifikasi wali</ActionButton> : null}</>}
       />
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5">
         <Card>
           <h2 className="text-lg font-semibold">Anak yang didampingi</h2>
           {!links.length ? <p className="mt-3 text-sm text-ink-500">Belum terhubung dengan anak.</p> : (
@@ -53,6 +54,7 @@ async function GuardianDetail({ params }: { params: Promise<{ id: string }> }) {
             </ul>
           )}
         </Card>
+        <DynamicResponseLinks actor={toStaffActor(session)} filter={{ guardianId: guardian.id }} />
       </div>
     </>
   );

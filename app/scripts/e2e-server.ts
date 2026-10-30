@@ -6,7 +6,7 @@ import { migrate } from "drizzle-orm/libsql/migrator";
 import { closeDb, getDbReady } from "../src/lib/db";
 import { resetEnvCacheForTests } from "../src/lib/env";
 import { createOrganization } from "../src/server/repositories/organization.repository";
-import { ensureStaffAccount } from "../src/server/services/staff.service";
+import { createStaffAccount, ensureStaffAccount } from "../src/server/services/staff.service";
 
 /** Each e2e run gets its own database, keys and media directory, never the dev installation. */
 async function main() {
@@ -28,6 +28,11 @@ async function main() {
   for (const identity of ["a", "b", "c"]) {
     await ensureStaffAccount(db, { organizationId: organization.id, email: `e2e-${identity}@panti.test`, name: "Staf Uji", password: "FictionalE2e2026!", role: "admin", actorLabel: "test:e2e" });
   }
+  await ensureStaffAccount(db, { organizationId: organization.id, email: "e2e-pengasuh@panti.test", name: "Pengasuh Uji", password: "FictionalE2e2026!", role: "pengasuh", actorLabel: "test:e2e" });
+  const builder = await ensureStaffAccount(db, { organizationId: organization.id, email: "e2e-builder@panti.test", name: "Builder Admin", password: "FictionalE2e2026!", role: "admin", actorLabel: "test:e2e" });
+  await createStaffAccount(db, { actor: { ...builder, organizationId: organization.id, role: "admin" }, input: { name: "Builder Psychologist", email: "e2e-psych@panti.test", password: "FictionalE2e2026!", role: "psikolog", credentialReference: "FICTIONAL-STR-987654", chairpersonConfirmation: true } });
+  const other = await createOrganization(db, { name: "Other fictional organization", timezone: "Asia/Jakarta" });
+  await ensureStaffAccount(db, { organizationId: other.id, email: "e2e-other@panti.test", name: "Other Admin", password: "FictionalE2e2026!", role: "admin", actorLabel: "test:e2e" });
   await closeDb();
   const child = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "3100"], { stdio: "inherit", env: process.env });
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => child.kill(signal));

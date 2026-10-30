@@ -13,7 +13,7 @@ const FACE: Record<Emotion, { fill: string; mouth: string; brows?: string; eye: 
 export function EmotionFace({ value, selected }: { value: Emotion; selected: boolean }) {
   const face = FACE[value];
   return (
-    <svg viewBox="0 0 100 100" className={`h-20 w-20 sm:h-24 sm:w-24 transition-transform ${selected ? "scale-110" : ""}`} aria-hidden="true">
+    <svg viewBox="0 0 100 100" className={`h-20 w-20 transition-transform ${selected ? "scale-110" : ""}`} aria-hidden="true">
       <circle cx="50" cy="50" r="44" fill={face.fill} stroke={selected ? "#3f6b55" : "#2b342f"} strokeWidth={selected ? 5 : 2.5} />
       <circle cx="36" cy="42" r={face.eye} fill="#2b342f" />
       <circle cx="64" cy="42" r={face.eye} fill="#2b342f" />

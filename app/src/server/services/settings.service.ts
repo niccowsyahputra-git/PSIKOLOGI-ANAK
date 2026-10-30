@@ -177,6 +177,23 @@ export async function getOrganizationProfile(
   return toProfileView(row);
 }
 
+/**
+ * Letterhead identity for the dashboard and printed pages (FR-17). Institution
+ * identity is not child data, so every staff member of the organization may
+ * read it; only `admin.general_settings` may change it. The actor's own
+ * organization id scopes the lookup, so no cross-tenant read is possible.
+ */
+export async function getOrganizationLetterhead(
+  db: AppDatabase,
+  params: { actor: StaffActor },
+): Promise<OrganizationProfileView> {
+  const row = await findOrganizationById(db, params.actor.organizationId);
+  if (!row) {
+    throw new NotFoundError("Profil panti tidak ditemukan pada instalasi ini");
+  }
+  return toProfileView(row);
+}
+
 export async function updateOrganizationProfileSettings(
   db: AppDatabase,
   params: { actor: StaffActor; input: GeneralSettingsInput },

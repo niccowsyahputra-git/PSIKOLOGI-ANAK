@@ -1,38 +1,50 @@
 @import "tailwindcss";
 
 /**
- * Calm, low-contrast pastel palette (PRD NFR-02): sage, soft blue and cream.
- * Every token is defined here so screens and future print layouts stay
- * consistent without importing a component library.
+ * Mobile-app design system. The product is a handheld app that happens to run
+ * in a browser: one narrow column, a fixed header and bottom bar, and a
+ * scrolling content area between them. Desktop shows the same composition on a
+ * neutral canvas instead of stretching into a dashboard.
+ *
+ * Token names are kept from the first palette (sage = primary, sky = info,
+ * clay = caution, cream = surface) so every existing screen inherits the new
+ * lavender identity without renaming classes in 40 files.
  */
 @theme {
-  --color-cream-50: #fdfbf6;
-  --color-cream-100: #f7f2e7;
-  --color-cream-200: #efe7d6;
-  --color-cream-300: #e2d6bf;
+  /* Surfaces: light lavender app background, white and soft pastel cards. */
+  --color-cream-50: #f6f4fd;
+  --color-cream-100: #efecfa;
+  --color-cream-200: #e5e1f4;
+  --color-cream-300: #d6d0ec;
 
-  --color-sage-50: #f2f6f0;
-  --color-sage-100: #e3ede0;
-  --color-sage-200: #c9dcc4;
-  --color-sage-300: #a8c5a1;
-  --color-sage-500: #6f9269;
-  --color-sage-600: #55744f;
-  --color-sage-700: #40593c;
+  /* Primary: vibrant purple-blue. */
+  --color-sage-50: #f4f1ff;
+  --color-sage-100: #eae4ff;
+  --color-sage-200: #d8cefe;
+  --color-sage-300: #b7a9fc;
+  --color-sage-500: #7b68f6;
+  --color-sage-600: #6354f1;
+  --color-sage-700: #4d3fcc;
 
-  --color-sky-soft-50: #f1f6fa;
-  --color-sky-soft-100: #e2edf5;
-  --color-sky-soft-200: #c8dced;
-  --color-sky-soft-500: #6d93b3;
-  --color-sky-soft-600: #527792;
+  /* Secondary: cool blue used for information and participant screens. */
+  --color-sky-soft-50: #f0f5ff;
+  --color-sky-soft-100: #e4ecfe;
+  --color-sky-soft-200: #cedcfd;
+  --color-sky-soft-500: #5b7cf0;
+  --color-sky-soft-600: #3f5fd8;
 
-  --color-clay-100: #f6e6e0;
-  --color-clay-500: #b5785f;
-  --color-clay-600: #965c45;
+  /* Caution: warm rose, never alarming red. */
+  --color-clay-100: #fde8ed;
+  --color-clay-500: #e2566f;
+  --color-clay-600: #c13b57;
 
-  --color-ink-900: #2b342f;
-  --color-ink-700: #46524b;
-  --color-ink-500: #6b7871;
-  --color-ink-300: #9aa6a0;
+  --color-ink-900: #1b1a2e;
+  --color-ink-700: #45435f;
+  --color-ink-500: #76738f;
+  --color-ink-300: #a9a6bd;
+
+  /* The desktop surround: deliberately quiet so the app stays the subject. */
+  --color-canvas: #e9e7f1;
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
@@ -42,15 +54,28 @@
     monospace;
 }
 
+:root {
+  --app-max-width: 430px;
+  --app-gutter: 16px;
+  --shadow-card: 0 1px 2px rgba(27, 26, 46, 0.04), 0 10px 24px -16px rgba(27, 26, 46, 0.18);
+  --shadow-float: 0 8px 28px -10px rgba(99, 84, 241, 0.45);
+  --shadow-device: 0 28px 70px -24px rgba(27, 26, 46, 0.45), 0 0 0 1px rgba(27, 26, 46, 0.06);
+  --gradient-brand: linear-gradient(135deg, #6a5bf5 0%, #8b6cfb 48%, #4f7bf7 100%);
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    height: 100%;
   }
 
   body {
-    background-color: var(--color-cream-50);
+    background-color: var(--color-canvas);
     color: var(--color-ink-900);
     font-family: var(--font-sans);
+    /* A native app never rubber-bands the page behind the UI. */
+    overscroll-behavior-y: none;
+    overflow-x: hidden;
   }
 
   /* Keyboard focus must always be visible (accessibility, section 11.5). */
@@ -63,16 +88,217 @@
     background-color: var(--color-sage-200);
     color: var(--color-ink-900);
   }
+
+  /* Letterhead blocks belong on paper only (FR-17). */
+  .print-only {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------- app shell */
+
+/* The desktop canvas. On a phone it is invisible: the app owns every pixel. */
+.app-canvas {
+  display: flex;
+  justify-content: center;
+  min-height: 100dvh;
+}
+
+.app-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--app-max-width);
+  height: 100dvh;
+  min-width: 0;
+  overflow: hidden;
+  background-color: var(--color-cream-50);
+}
+
+/*
+ * From a tablet width upward the phone-sized composition is held and centered
+ * on the canvas. This is a rounded app surface, not a decorative phone bezel,
+ * so nothing here appears on an actual device.
+ */
+@media (min-width: 560px) {
+  .app-canvas {
+    align-items: center;
+    padding: 24px 16px;
+  }
+
+  .app-shell {
+    height: min(calc(100dvh - 48px), 920px);
+    border-radius: 30px;
+    box-shadow: var(--shadow-device);
+  }
+}
+
+.app-header {
+  flex: none;
+  padding-top: env(safe-area-inset-top);
+  background-color: color-mix(in srgb, var(--color-cream-50) 86%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--color-cream-200);
+}
+
+.app-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px var(--app-gutter) 28px;
+}
+
+.app-nav {
+  flex: none;
+  padding-bottom: max(env(safe-area-inset-bottom), 6px);
+  background-color: color-mix(in srgb, #ffffff 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--color-cream-200);
+}
+
+/* Participant screens have no bottom bar, so their content keeps the gutter. */
+.app-scroll--roomy {
+  padding-bottom: max(env(safe-area-inset-bottom), 28px);
+}
+
+@media (min-width: 1024px) {
+  .app-shell:has(.builder-workspace) {
+    max-width: 1280px;
+    height: calc(100dvh - 48px);
+  }
+}
+.builder-workspace { min-width: 0; }
+.builder-workspace fieldset { min-width: 0; }
+.builder-workspace label { font-size: 0.875rem; }
+
+.gradient-brand {
+  background-image: var(--gradient-brand);
+}
+
+.shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+.shadow-float {
+  box-shadow: var(--shadow-float);
+}
+
+/* Sheets rise from the bottom edge the way a native action sheet does. */
+@keyframes sheet-up {
+  from {
+    transform: translateY(14px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.sheet-up {
+  animation: sheet-up 180ms ease-out;
+  box-shadow: 0 -18px 40px -24px rgba(27, 26, 46, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-up {
+    animation: none;
+  }
+}
+
+/* Horizontal chip rows behave like native segmented scrollers. */
+.scroll-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  margin-inline: calc(var(--app-gutter) * -1);
+  padding-inline: var(--app-gutter);
+}
+
+.scroll-row::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-row > * {
+  flex: none;
+  scroll-snap-align: start;
 }
 
 /* Reports are printed from the browser on A4 (FR-14); no app chrome on paper. */
 @media print {
-  .no-print {
+  .no-print,
+  .app-nav,
+  .app-header {
     display: none !important;
+  }
+
+  .print-only {
+    display: block;
   }
 
   body {
     background: #ffffff;
+    color: #000000;
+    font-size: 11pt;
+    line-height: 1.4;
+    overflow: visible;
+  }
+
+  /* The app frame must not clip a report to phone width on paper. */
+  .app-canvas,
+  .app-shell,
+  .app-scroll {
+    display: block;
+    max-width: none !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* Screen cards become plain paper blocks so ink is spent on content. */
+  .print-plain,
+  .print-plain * {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .assessment-print .result-columns {
+    display: block;
+  }
+
+  .assessment-print .result-columns > * + * {
+    margin-top: 12pt;
+  }
+
+  .assessment-print li {
+    font-size: 11pt;
+  }
+
+  .assessment-print img {
+    max-height: 80mm;
+    max-width: 100%;
+    object-fit: contain;
+  }
+
+  /* Keep a participant's answer from splitting across two sheets. */
+  .print-keep {
+    break-inside: avoid;
   }
 
   @page {

@@ -13,7 +13,7 @@ export function AnswerList({ module, answers, compact = false }: { module: Modul
       {INSTRUMENTS[module].map((item) => {
         const answer = byId.get(item.id);
         return (
-          <li key={item.id} className="rounded-xl border border-cream-200 bg-white p-3 text-sm">
+          <li key={item.id} className="print-keep rounded-xl border border-cream-200 bg-white p-3 text-sm">
             <p className="text-ink-500"><span className="font-mono text-xs text-ink-300">{item.id}</span> {item.text}{item.sensitive && !compact ? <span className="ml-2 text-xs text-clay-600">(sensitif · {SKIP_REMINDER})</span> : null}</p>
             <div className="mt-2">{answer ? <AnswerValue answer={answer} /> : <Badge tone="neutral">Belum diisi</Badge>}</div>
             {answer && answer.assistance !== "none" ? <p className="mt-1 text-xs text-sky-soft-600">Bantuan: {ASSISTANCE_LABELS[answer.assistance]}</p> : null}

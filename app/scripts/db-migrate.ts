@@ -1,5 +1,5 @@
-import { migrate } from "drizzle-orm/libsql/migrator";
-import { closeDb, getDbReady } from "../src/lib/db";
+import { closeDb, getDbReady, getDbClient } from "../src/lib/db";
+import { migrateWithBackup } from "./lib/migration-safety";
 import { getEnv } from "../src/lib/env";
 import { resolveFromProjectRoot } from "../src/lib/paths";
 import { printDone, printHeader, printStep } from "./lib/cli";
@@ -15,8 +15,11 @@ async function main(): Promise<void> {
   printStep(`migrations: ${resolveFromProjectRoot("migrations")}`);
   printStep(`mode: ${env.appMode} (LOCAL_ONLY=${env.localOnly})`);
 
-  const db = await getDbReady();
-  await migrate(db, { migrationsFolder: resolveFromProjectRoot("migrations") });
+  printStep("Application writers must be stopped. Rehearsing on a private backup before upgrading.");
+  await getDbReady();
+  const result = await migrateWithBackup(getDbClient(), resolveFromProjectRoot("migrations"), env.backup.rootAbsolutePath);
+  printStep(`verified backup: ${result.backupPath}`);
+  printStep(`unchanged historical tables: ${result.historicalTables}`);
   printDone("Migrasi selesai. Skema lokal mutakhir.");
 }
 

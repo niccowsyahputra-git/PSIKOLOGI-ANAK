@@ -30,7 +30,7 @@ export function GuardianLinkForm({ childId, fictional }: { childId: string; fict
   if (!open) return <button type="button" className={secondaryButtonClassName} onClick={() => setOpen(true)}>+ Tambah orang tua / wali</button>;
   return (
     <form onSubmit={submit} className="space-y-3 rounded-2xl border border-cream-200 bg-cream-50 p-4">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3">
         <Field label="Nama orang tua / wali" htmlFor="guardianName" hint={fictional ? "Data fiktif: gunakan nama samaran." : undefined}><input id="guardianName" name="guardianName" required minLength={2} maxLength={200} className={inputClassName} /></Field>
         <Field label="Hubungan dengan anak" htmlFor="relationship">
           <select id="relationship" name="relationship" required className={inputClassName} defaultValue="">

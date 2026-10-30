@@ -49,6 +49,11 @@ describe("permission matrix", () => {
     expect(can("pengasuh", "export.csv")).toBe(false);
   });
 
+  it("opens the discussion assistant to every staff role but to nothing else", () => {
+    expect(PERMISSION_MATRIX["ai.chat"]).toEqual(["pengasuh", "ketua", "psikolog", "admin"]);
+    for (const role of STAFF_ROLES) expect(can(role, "ai.chat")).toBe(true);
+  });
+
   it("limits authority review to the chairperson", () => {
     expect(PERMISSION_MATRIX["authority.review"]).toEqual(["ketua"]);
   });

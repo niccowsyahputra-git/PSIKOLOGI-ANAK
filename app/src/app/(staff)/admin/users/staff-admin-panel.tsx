@@ -46,10 +46,14 @@ export function StaffAdminPanel({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-ink-500">
-        <Badge tone="sage">{activeCount} aktif</Badge>
-        <Badge tone="neutral">{initialRows.length} total akun</Badge>
-        <span>Peran efektif selalu dihitung ulang di server pada setiap aksi.</span>
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5">
+          <Badge tone="sage">{activeCount} aktif</Badge>
+          <Badge tone="neutral">{initialRows.length} total akun</Badge>
+        </div>
+        <p className="text-[11px] leading-relaxed text-ink-500">
+          Peran efektif selalu dihitung ulang di server pada setiap aksi.
+        </p>
       </div>
 
       <CreateStaffCard onCreated={() => router.refresh()} />
@@ -60,91 +64,76 @@ export function StaffAdminPanel({
           description="Jalankan `npm run bootstrap:admin` untuk membuat administrator pertama, atau tambahkan akun di formulir di atas."
         />
       ) : (
-        <Card className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-cream-200 text-left text-xs tracking-wide text-ink-500 uppercase">
-                  <th className="px-4 py-3 font-medium">Nama</th>
-                  <th className="px-4 py-3 font-medium">Peran</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Kredensial</th>
-                  <th className="px-4 py-3 font-medium">Dibuat</th>
-                  <th className="px-4 py-3 font-medium text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {initialRows.map((row) => {
-                  const isSelf = row.membershipId === actorMembershipId;
-                  const expanded = expandedId === row.membershipId;
-                  return (
-                    <tr key={row.membershipId} className="border-b border-cream-200 last:border-0 align-top">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-ink-900">{row.name}</p>
-                        <p className="text-xs text-ink-500">{row.email}</p>
-                        {isSelf ? (
-                          <span className="mt-1 inline-block text-[11px] text-sky-soft-600">
-                            sesi Anda
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge tone={row.role === "admin" ? "sky" : row.role === "psikolog" ? "sage" : "neutral"}>
-                          {row.roleLabel}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        {row.active ? (
-                          <Badge tone="sage">Aktif</Badge>
-                        ) : (
-                          <Badge tone="clay">Nonaktif</Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-ink-500">
-                        {row.role !== "psikolog"
-                          ? "—"
-                          : row.credentialVerified
-                            ? "Terverifikasi"
-                            : "Belum diverifikasi"}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-ink-500">
-                        {formatDateTime(row.createdAt, timezone)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          className={secondaryButtonClassName}
-                          onClick={() =>
-                            setExpandedId(expanded ? null : row.membershipId)
-                          }
-                          aria-expanded={expanded}
-                        >
-                          {expanded ? "Tutup" : "Kelola"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <ul className="space-y-2.5">
+          {/* Six table columns cannot share one phone column, so every account
+              is a card and the editor opens inside the card it belongs to. */}
+          {initialRows.map((row) => {
+            const isSelf = row.membershipId === actorMembershipId;
+            const expanded = expandedId === row.membershipId;
+            return (
+              <li key={row.membershipId}>
+                <Card>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[15px] font-semibold text-ink-900">{row.name}</p>
+                      <p className="truncate text-[12px] text-ink-500">{row.email}</p>
+                    </div>
+                    {isSelf ? (
+                      <span className="flex-none text-[10px] font-medium text-sky-soft-600">
+                        sesi Anda
+                      </span>
+                    ) : null}
+                  </div>
 
-          {expandedId ? (
-            <div className="border-t border-cream-200 bg-cream-50/70 px-4 py-4">
-              <RowEditor
-                key={expandedId}
-                row={initialRows.find((row) => row.membershipId === expandedId)!}
-                isSelf={expandedId === actorMembershipId}
-                onDone={() => router.refresh()}
-              />
-            </div>
-          ) : null}
-        </Card>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                    <Badge tone={row.role === "admin" ? "sky" : row.role === "psikolog" ? "sage" : "neutral"}>
+                      {row.roleLabel}
+                    </Badge>
+                    {row.active ? (
+                      <Badge tone="sage">Aktif</Badge>
+                    ) : (
+                      <Badge tone="clay">Nonaktif</Badge>
+                    )}
+                    {row.role === "psikolog" ? (
+                      <Badge tone={row.credentialVerified ? "sage" : "clay"}>
+                        {row.credentialVerified ? "Kredensial terverifikasi" : "Kredensial belum diverifikasi"}
+                      </Badge>
+                    ) : null}
+                  </div>
+
+                  <p className="mt-2 text-[11px] text-ink-500">
+                    Dibuat {formatDateTime(row.createdAt, timezone)}
+                  </p>
+
+                  <button
+                    type="button"
+                    className={`${secondaryButtonClassName} mt-3 w-full`}
+                    onClick={() => setExpandedId(expanded ? null : row.membershipId)}
+                    aria-expanded={expanded}
+                  >
+                    {expanded ? "Tutup" : "Kelola"}
+                  </button>
+
+                  {expanded ? (
+                    <div className="mt-3 border-t border-cream-200 pt-3">
+                      <RowEditor
+                        key={row.membershipId}
+                        row={row}
+                        isSelf={isSelf}
+                        onDone={() => router.refresh()}
+                      />
+                    </div>
+                  ) : null}
+                </Card>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       <Card>
         <h2 className="text-sm font-semibold text-ink-900">Catatan kebijakan</h2>
-        <ul className="mt-2 space-y-1 text-sm text-ink-500">
+        <ul className="mt-2 space-y-1 text-[12px] leading-relaxed text-ink-500">
           <li>• Kata sandi tidak pernah ditampilkan ulang setelah dibuat.</li>
           <li>• Perubahan peran atau status menghapus sesi aktif akun tersebut.</li>
           <li>• Peran sendiri tidak bisa diturunkan dari akun yang sama.</li>
@@ -218,14 +207,14 @@ function CreateStaffCard({ onCreated }: { onCreated: () => void }) {
         Akun hanya dibuat di sini; tidak ada pendaftaran mandiri dari halaman login.
       </p>
 
-      <form onSubmit={handleSubmit} className="mt-4 grid gap-4 md:grid-cols-2">
+      <form onSubmit={handleSubmit} className="mt-4 grid gap-4">
         {message ? (
-          <p className="md:col-span-2 rounded-xl border border-clay-500/30 bg-clay-100 px-3 py-2 text-sm text-clay-600" role="alert">
+          <p className="rounded-xl border border-clay-500/30 bg-clay-100 px-3 py-2 text-sm text-clay-600" role="alert">
             {message}
           </p>
         ) : null}
         {success ? (
-          <p className="md:col-span-2 rounded-xl border border-sage-200 bg-sage-50 px-3 py-2 text-sm text-sage-700" role="status">
+          <p className="rounded-xl border border-sage-200 bg-sage-50 px-3 py-2 text-sm text-sage-700" role="status">
             {success}
           </p>
         ) : null}
@@ -324,11 +313,9 @@ function CreateStaffCard({ onCreated }: { onCreated: () => void }) {
           </>
         ) : null}
 
-        <div className="md:col-span-2">
-          <button type="submit" disabled={pending} className={primaryButtonClassName}>
-            {pending ? "Menyimpan…" : "Buat akun"}
-          </button>
-        </div>
+        <button type="submit" disabled={pending} className={`${primaryButtonClassName} w-full`}>
+          {pending ? "Menyimpan…" : "Buat akun"}
+        </button>
       </form>
     </Card>
   );
@@ -393,7 +380,7 @@ function RowEditor({
         </p>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4">
         <Field
           label="Peran"
           htmlFor={`role-${row.membershipId}`}

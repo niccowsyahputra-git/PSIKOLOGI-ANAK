@@ -113,21 +113,25 @@ export async function createCycle(actor: StaffActor, childId: string, input: unk
     await audit(tx, actor, "cycle.create", "assessment_cycles", id, { module: instrumentModule, ageIsEstimated: age.estimated }); return cycle(tx, actor.organizationId, id);
   });
 }
-async function consentGranted(db: Executor, cycleId: string, subjectId: string, type: typeof s.consents.$inferSelect["type"]): Promise<boolean> {
+export async function consentGranted(db: Executor, cycleId: string, subjectId: string, type: typeof s.consents.$inferSelect["type"]): Promise<boolean> {
   const [row] = await db.select().from(s.consents).where(and(eq(s.consents.cycleId, cycleId), eq(s.consents.subjectId, subjectId), eq(s.consents.type, type))).orderBy(desc(s.consents.capturedAt), desc(s.consents.id)).limit(1); return row?.status === "granted";
 }
 export async function assertGate(db: Executor, c: CycleRow, target: "child" | "guardian", guardianId: string | null = null, media = false) {
+  await assertContextGate(db, c, target, guardianId, media);
+  if (c.fictional) return;
+  const [approval] = await db.select().from(s.instrumentApprovals).where(and(eq(s.instrumentApprovals.organizationId, c.organizationId), eq(s.instrumentApprovals.instrumentVersion, c.instrumentVersion), eq(s.instrumentApprovals.contentHash, hash))).orderBy(desc(s.instrumentApprovals.approvedAt), desc(s.instrumentApprovals.id)).limit(1);
+  if (approval?.status !== "approved") throw new ForbiddenError("Instrumen belum disahkan psikolog atau telah dicabut");
+}
+export async function assertContextGate(db: Executor, c: CycleRow, target: "child" | "guardian", guardianId: string | null = null, media = false) {
   const child = await person(db, c.organizationId, "children", c.childId); if (child.profileState !== "verified" || c.status === "closed") throw new ForbiddenError("Profil belum diverifikasi atau siklus sudah ditutup");
   if (guardianId) { await linkedGuardian(db, c.organizationId, c.childId, guardianId); const guardian = await person(db, c.organizationId, "guardians", guardianId); if (guardian.profileState !== "verified" || guardian.fictional !== c.fictional) throw new ForbiddenError("Verifikasi profil wali dan konteksnya"); }
   if (c.fictional) { if (!child.fictional) throw new ForbiddenError(); return; }
   if (!getEnv().liveIntakeEnabled) throw new NotReadyError("Intake nyata belum diaktifkan");
-  const [approval] = await db.select().from(s.instrumentApprovals).where(and(eq(s.instrumentApprovals.organizationId, c.organizationId), eq(s.instrumentApprovals.instrumentVersion, c.instrumentVersion), eq(s.instrumentApprovals.contentHash, hash))).orderBy(desc(s.instrumentApprovals.approvedAt), desc(s.instrumentApprovals.id)).limit(1);
-  if (approval?.status !== "approved") throw new ForbiddenError("Instrumen belum disahkan psikolog atau telah dicabut");
   const [authority] = await db.select().from(s.authorityReviews).where(eq(s.authorityReviews.cycleId, c.id)).orderBy(desc(s.authorityReviews.reviewedAt), desc(s.authorityReviews.id)).limit(1);
   if (authority?.decision !== "approved" || !await consentGranted(db, c.id, c.childId, "intake")) throw new ForbiddenError("Dasar kewenangan dan persetujuan intake anak belum sah");
   if (target === "child" && !await consentGranted(db, c.id, c.childId, "assent")) throw new ForbiddenError("Anak belum menyetujui kegiatan atau menarik persetujuan");
   if (target === "guardian" && (!guardianId || !await consentGranted(db, c.id, guardianId, "intake"))) throw new ForbiddenError("Persetujuan wali untuk datanya sendiri diperlukan");
-  if (media && !await consentGranted(db, c.id, c.childId, "media")) throw new ForbiddenError("Persetujuan media belum diberikan");
+  if (media && !await consentGranted(db, c.id, target === "guardian" ? guardianId! : c.childId, "media")) throw new ForbiddenError("Persetujuan media subjek belum diberikan");
 }
 export async function addConsent(actor: StaffActor, cycleId: string, input: unknown) {
   assertCan(actor.role, "profile.intake.write"); const data = v.consentInput.parse(input); const db = await getDbReady();

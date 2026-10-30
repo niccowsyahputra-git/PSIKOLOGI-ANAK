@@ -58,7 +58,7 @@ export async function AuditView({ searchParams }: { searchParams: AuditSearchPar
   return (
     <div className="space-y-5">
       <Card>
-        <form method="get" className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+        <form method="get" className="grid gap-4">
           <Field label="Aksi" htmlFor="filter-action" hint="Contoh: staff.role_change">
             <input
               id="filter-action"
@@ -77,8 +77,8 @@ export async function AuditView({ searchParams }: { searchParams: AuditSearchPar
               placeholder="semua entitas"
             />
           </Field>
-          <div className="flex items-end gap-2">
-            <button type="submit" className={primaryButtonClassName}>
+          <div className="flex gap-2">
+            <button type="submit" className={`${primaryButtonClassName} flex-1`}>
               Terapkan
             </button>
             <Link href="/admin/audit" className={secondaryButtonClassName} prefetch={false}>
@@ -88,7 +88,7 @@ export async function AuditView({ searchParams }: { searchParams: AuditSearchPar
         </form>
       </Card>
 
-      <div className="flex flex-wrap items-center gap-2 text-sm text-ink-500">
+      <div className="flex flex-wrap items-center gap-1.5">
         <Badge tone="sky">{rows.length} baris</Badge>
         {action ? <Badge tone="neutral">aksi: {action}</Badge> : null}
         {entityType ? <Badge tone="neutral">entitas: {entityType}</Badge> : null}
@@ -101,56 +101,35 @@ export async function AuditView({ searchParams }: { searchParams: AuditSearchPar
           description="Ubah filter atau lakukan tindakan administratif untuk melihat jejak audit pertama."
         />
       ) : (
-        <Card className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-cream-200 text-left text-xs tracking-wide text-ink-500 uppercase">
-                  <th className="px-4 py-3 font-medium">Waktu</th>
-                  <th className="px-4 py-3 font-medium">Aksi</th>
-                  <th className="px-4 py-3 font-medium">Entitas</th>
-                  <th className="px-4 py-3 font-medium">Aktor</th>
-                  <th className="px-4 py-3 font-medium">Metadata</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-b border-cream-200 last:border-0 align-top">
-                    <td className="px-4 py-3 whitespace-nowrap text-xs text-ink-500">
-                      {formatDateTime(row.createdAt, session.organization.timezone)}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-ink-900">
-                      {row.action}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-ink-700">
-                      <span className="font-mono">{row.entityType}</span>
-                      {row.entityId ? (
-                        <span className="block text-ink-300">
-                          {row.entityId.slice(0, 8)}…
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-ink-700">
-                      {row.actorType}
-                      {row.actorId ? (
-                        <span className="block text-ink-300">
-                          {row.actorId.slice(0, 8)}…
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[11px] break-all text-ink-500">
-                      {row.safeMetadata}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <Card className="p-1.5">
+          {/* A table would need horizontal scrolling in one phone column, so each
+              entry is a stacked record instead. */}
+          <ul className="space-y-1">
+            {rows.map((row) => (
+              <li key={row.id} className="rounded-2xl bg-cream-50 px-3 py-2.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-ink-900">
+                    {row.action}
+                  </p>
+                  <p className="flex-none text-[10px] text-ink-500">
+                    {formatDateTime(row.createdAt, session.organization.timezone)}
+                  </p>
+                </div>
+                <p className="mt-1 text-[11px] text-ink-700">
+                  <span className="font-mono">{row.entityType}</span>
+                  {row.entityId ? <span className="text-ink-300"> · {row.entityId.slice(0, 8)}…</span> : null}
+                  <span className="text-ink-500"> · oleh {row.actorType}</span>
+                  {row.actorId ? <span className="text-ink-300"> {row.actorId.slice(0, 8)}…</span> : null}
+                </p>
+                <p className="mt-1 font-mono text-[10px] break-all text-ink-500">{row.safeMetadata}</p>
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
 
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-ink-500">
+      <div className="flex flex-col gap-2 pb-2">
+        <p className="text-[11px] leading-relaxed text-ink-500">
           Halaman ini menampilkan maksimal {AUDIT_PAGE_SIZE} catatan terbaru.
         </p>
         {nextCursor ? (
@@ -164,12 +143,12 @@ export async function AuditView({ searchParams }: { searchParams: AuditSearchPar
               },
             }}
             prefetch={false}
-            className={secondaryButtonClassName}
+            className={`${secondaryButtonClassName} w-full`}
           >
             Halaman berikutnya
           </Link>
         ) : (
-          <span className="text-xs text-ink-300">
+          <span className="text-[11px] text-ink-300">
             {cursor ? "Tidak ada catatan lebih lanjut" : "Akhir daftar"}
           </span>
         )}

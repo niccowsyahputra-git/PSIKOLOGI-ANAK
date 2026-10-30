@@ -39,6 +39,11 @@ type FormState = {
   clearApiKey: boolean;
 };
 
+const TESTED_FIELDS = [
+  "mode", "baseUrl", "model", "extension", "temperature", "maxTokens", "timeoutSeconds",
+  "apiKey", "clearApiKey",
+] as const;
+
 function toFormState(settings: AiSettings): FormState {
   return {
     mode: settings.mode,
@@ -72,9 +77,16 @@ export function AiSettingsForm({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   const isLocalEndpoint = form.mode === "local_endpoint";
+  const savedForm = toFormState(settings);
+  const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(savedForm);
+  const needsRetest = TESTED_FIELDS.some((key) => form[key] !== savedForm[key]);
 
   function update<TKey extends keyof FormState>(key: TKey, value: FormState[TKey]) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+      ...(TESTED_FIELDS.some((field) => field === key) ? { enabled: false } : {}),
+    }));
   }
 
   function applySettings(next: AiSettings) {
@@ -151,6 +163,7 @@ export function AiSettingsForm({
   }
 
   async function handleTest() {
+    if (hasUnsavedChanges) return;
     const data = await call("test", {
       url: "/api/admin/ai-settings/test",
       method: "POST",
@@ -207,7 +220,7 @@ export function AiSettingsForm({
           </Badge>
           <Badge tone="neutral">Versi konfigurasi {settings.settingsVersion}</Badge>
         </div>
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
+        <dl className="grid gap-2 text-sm">
           <div>
             <dt className="text-ink-500">API key tersimpan</dt>
             <dd className="text-ink-900">
@@ -275,7 +288,7 @@ export function AiSettingsForm({
           memerlukan URL, model atau API key.
         </p>
 
-        <form onSubmit={handleSave} className="mt-4 grid gap-4 md:grid-cols-2">
+        <form onSubmit={handleSave} className="mt-4 grid gap-4">
           <Field label="Mode" htmlFor="ai-mode" error={fieldErrors.mode?.[0]}>
             <select
               id="ai-mode"
@@ -453,7 +466,7 @@ export function AiSettingsForm({
           </Field>
 
           {settings.hasApiKey ? (
-            <label className="flex items-start gap-2 text-sm text-ink-700 md:col-span-2">
+            <label className="flex items-start gap-2 text-sm text-ink-700">
               <input
                 type="checkbox"
                 checked={form.clearApiKey}
@@ -466,18 +479,18 @@ export function AiSettingsForm({
             </label>
           ) : null}
 
-          <label className="flex items-start gap-2 text-sm text-ink-700 md:col-span-2">
+          <label className="flex items-start gap-2 text-sm text-ink-700">
             <input
               type="checkbox"
               checked={form.enabled}
               onChange={(event) => update("enabled", event.target.checked)}
               className="mt-1"
-              disabled={!settings.testMatchesCurrentConfig}
+              disabled={!settings.testMatchesCurrentConfig || needsRetest}
             />
             <span>
               Aktifkan bantuan AI untuk konfigurasi ini.
               <span className="mt-1 block text-xs text-ink-500">
-                {settings.testMatchesCurrentConfig
+                {settings.testMatchesCurrentConfig && !needsRetest
                   ? "Konfigurasi tersimpan sudah lulus uji."
                   : "Tersedia setelah konfigurasi tersimpan diuji dan lulus."}
               </span>
@@ -489,19 +502,23 @@ export function AiSettingsForm({
             </span>
           </label>
 
-          <div className="flex flex-wrap items-center gap-3 md:col-span-2">
+          <div className="flex flex-wrap items-center gap-3">
             <button type="submit" disabled={pending !== null} className={primaryButtonClassName}>
               {pending === "save" ? "Menyimpan…" : "Simpan konfigurasi"}
             </button>
             <button
               type="button"
-              disabled={pending !== null}
+              disabled={pending !== null || hasUnsavedChanges}
               className={secondaryButtonClassName}
               onClick={handleTest}
             >
               {pending === "test" ? "Menguji…" : "Uji konfigurasi"}
             </button>
-            <span className="text-xs text-ink-500">Revisi tersimpan: {settings.revision}</span>
+            <span className="text-xs text-ink-500">
+              {hasUnsavedChanges
+                ? "Simpan perubahan terlebih dahulu. Uji memakai konfigurasi tersimpan."
+                : `Revisi tersimpan: ${settings.revision}`}
+            </span>
           </div>
         </form>
       </Card>

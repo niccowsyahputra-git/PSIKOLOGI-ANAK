@@ -8,6 +8,8 @@ import { EMOTIONS, INSTRUMENTS, LIKERT_LABELS, SKIP_REMINDER, type Answer, type 
 import { ASSISTANCE_LABELS } from "@/lib/labels";
 import { DrawingPad } from "./drawing-pad";
 import { EmotionFace } from "./emotion-face";
+import { DynamicQuestionnaire } from "./dynamic-questionnaire";
+import type { DynamicWire } from "@/server/services/response.service";
 
 type Draft = { status: "draft"; revision: number; module: Module; answers: Answer[]; fictional: boolean; target: "child" | "guardian" };
 type Wire = Draft | { status: "submitted"; submittedAt: string; fictional: boolean };
@@ -25,6 +27,7 @@ const errorState = (error: unknown): SaveState => { const status = (error as { s
 
 export function Questionnaire() {
   const [wire, setWire] = useState<Wire | null>(null);
+  const [dynamic, setDynamic] = useState<DynamicWire | null>(null);
   const [loadError, setLoadError] = useState<SaveState | null>(null);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [step, setStep] = useState(-1);
@@ -43,7 +46,8 @@ export function Questionnaire() {
   const timer = useRef<number | undefined>(undefined);
   const setSaveState = (next: SaveState) => { saveRef.current = next; setSave(next); };
 
-  const apply = useCallback((next: Wire) => {
+  const apply = useCallback((next: Wire | DynamicWire) => {
+    if ("engine" in next) { setDynamic(next); return; }
     setWire(next); setLoadError(null); setSaveState("idle"); setPendingAssistance({});
     if (next.status === "draft") {
       revision.current = next.revision;
@@ -51,10 +55,10 @@ export function Questionnaire() {
       answersRef.current = map; setAnswers(map); dirty.current = false;
     }
   }, []);
-  const load = useCallback(() => api<Wire>("/api/intake/current").then(apply, (error: unknown) => setLoadError(errorState(error))), [apply]);
+  const load = useCallback(() => api<Wire | DynamicWire>("/api/intake/current").then(apply, (error: unknown) => setLoadError(errorState(error))), [apply]);
   useEffect(() => {
     let active = true;
-    api<Wire>("/api/intake/current").then((next) => { if (active) apply(next); }, (error: unknown) => { if (active) setLoadError(errorState(error)); });
+    api<Wire | DynamicWire>("/api/intake/current").then((next) => { if (active) apply(next); }, (error: unknown) => { if (active) setLoadError(errorState(error)); });
     return () => { active = false; };
   }, [apply]);
 
@@ -108,6 +112,7 @@ export function Questionnaire() {
     setFinished("ended");
   }
 
+  if (dynamic) return <DynamicQuestionnaire initial={dynamic} />;
   if (loadError) return <Notice title={loadError === "expired" ? "Belum ada sesi aktif di perangkat ini" : "Jawaban belum dapat dimuat"} body={loadError === "expired" ? "Minta pendamping membuka tautan sesi dari aplikasi staf. Tautan hanya dapat dipakai sekali dan berlaku 24 jam." : "Periksa koneksi ke aplikasi lokal, lalu coba lagi."} action={loadError === "expired" ? <Link href="/" className={secondaryButtonClassName}>Ke halaman awal</Link> : <button className={primaryButtonClassName} onClick={() => void load()}>Coba lagi</button>} />;
   if (!wire) return <p className="py-20 text-center text-ink-500">Memuat…</p>;
   if (finished === "ended") return <Notice title="Terima kasih." body="Sesi sudah selesai. Silakan kembalikan perangkat kepada pendamping." action={<Link href="/login" className={secondaryButtonClassName}>Masuk staf</Link>} />;
@@ -115,16 +120,16 @@ export function Questionnaire() {
   if (save === "expired") return <Notice title="Sesi telah berakhir" body="Sesi ini dicabut atau kedaluwarsa. Jawaban yang sudah tersimpan tetap aman. Kembalikan perangkat kepada pendamping." action={<Link href="/" className={secondaryButtonClassName}>Ke halaman awal</Link>} />;
 
   const child = wire.target === "child";
-  const banner = wire.fictional ? <div className="mb-4 rounded-xl bg-clay-100 px-3 py-2 text-center text-xs font-medium text-clay-600">SESI DEMONSTRASI — DATA FIKTIF</div> : null;
+  const banner = wire.fictional ? <div className="mb-3 rounded-2xl bg-clay-100 px-3 py-2 text-center text-[11px] font-medium text-clay-600">SESI DEMONSTRASI — DATA FIKTIF</div> : null;
   const addressed = (item: Item) => Boolean(answers[item.id] && complete(answers[item.id]));
 
   if (paused) return <>{banner}<Notice title={child ? "Istirahat dulu, ya." : "Sesi dijeda"} body={save === "error" || save === "conflict" ? "Sebagian perubahan belum tersimpan. Lanjutkan untuk mencoba menyimpan lagi atau memuat jawaban tersimpan." : `${child ? "Jawabanmu" : "Jawaban Anda"} sudah tersimpan. Lanjutkan kapan saja selama sesi masih berlaku.`} action={<button className={primaryButtonClassName} onClick={() => setPaused(false)}>Lanjutkan</button>} /></>;
 
   if (step < 0) return (
     <>{banner}
-      <section className="rounded-3xl bg-white p-6 shadow-sm sm:p-10">
-        <h1 className="text-3xl font-semibold text-ink-900">{child ? "Halo! Terima kasih sudah mau ikut." : "Terima kasih telah meluangkan waktu."}</h1>
-        <div className="mt-5 space-y-3 text-lg text-ink-700">
+      <section className="shadow-card rounded-3xl bg-white p-5">
+        <h1 className="text-[26px] leading-tight font-semibold text-ink-900">{child ? "Halo! Terima kasih sudah mau ikut." : "Terima kasih telah meluangkan waktu."}</h1>
+        <div className="mt-4 space-y-2.5 text-[15px] leading-relaxed text-ink-700">
           {child ? <>
             <p>Ini <strong>bukan ujian</strong>. Tidak ada jawaban benar atau salah, dan tidak ada nilai.</p>
             <p>Kamu boleh melewati pertanyaan apa pun, dan boleh istirahat kapan saja.</p>
@@ -135,7 +140,7 @@ export function Questionnaire() {
             <p>Ada {items.length} pertanyaan. Jawaban tersimpan otomatis, dan Anda dapat memeriksa ulang sebelum mengirim.</p>
           </>}
         </div>
-        <button className={`${primaryButtonClassName} mt-8 px-8 py-3 text-lg`} onClick={() => setStep(0)}>Mulai</button>
+        <button className={`${primaryButtonClassName} mt-6 w-full py-3.5 text-base`} onClick={() => setStep(0)}>Mulai</button>
       </section>
     </>
   );
@@ -145,23 +150,23 @@ export function Questionnaire() {
     return (
       <>{banner}
         <Header step={items.length} total={items.length} save={save} onPause={pause} onRetry={() => void flush()} onReload={() => void load()} />
-        <section className="rounded-3xl bg-white p-6 shadow-sm sm:p-8">
-          <h1 className="text-2xl font-semibold">Periksa sebelum mengirim</h1>
-          <p className="mt-2 text-ink-500">Setelah dikirim, jawaban tidak dapat diubah. {missing.length ? `${missing.length} ${child ? "pertanyaan belum dijawab atau dilewati" : "pertanyaan belum dijawab atau dipilih dilewati"}.` : "Semua pertanyaan sudah dijawab atau dilewati."}</p>
-          <ol className="mt-5 space-y-2">
+        <section className="shadow-card rounded-3xl bg-white p-5">
+          <h1 className="text-xl font-semibold">Periksa sebelum mengirim</h1>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-500">Setelah dikirim, jawaban tidak dapat diubah. {missing.length ? `${missing.length} ${child ? "pertanyaan belum dijawab atau dilewati" : "pertanyaan belum dijawab atau dipilih dilewati"}.` : "Semua pertanyaan sudah dijawab atau dilewati."}</p>
+          <ol className="mt-4 space-y-1.5">
             {items.map((item, index) => {
               const answer = answers[item.id];
-              return <li key={item.id}><button type="button" onClick={() => void go(index)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-cream-200 px-4 py-3 text-left hover:bg-cream-50">
-                <span className="text-sm"><span className="mr-2 text-ink-300">{index + 1}.</span>{item.text}</span>
+              return <li key={item.id}><button type="button" onClick={() => void go(index)} className="flex min-h-[48px] w-full items-center justify-between gap-2 rounded-2xl bg-cream-50 px-3 py-2 text-left active:bg-cream-100">
+                <span className="text-[12px] leading-snug"><span className="mr-1.5 text-ink-300">{index + 1}.</span>{item.text}</span>
                 {!addressed(item) ? <Badge tone="clay">Belum diisi</Badge> : answer.state === "skipped" ? <Badge tone="neutral">Dilewati</Badge> : <Badge tone="sage">Dijawab</Badge>}
               </button></li>;
             })}
           </ol>
-          {missing.length ? <button type="button" className={`${secondaryButtonClassName} mt-4`} onClick={() => commit({ ...answersRef.current, ...Object.fromEntries(missing.map((item) => [item.id, skippedAnswer(item, answersRef.current[item.id]?.assistance ?? pendingAssistance[item.id] ?? "none")])) })}>Lewati semua yang belum diisi</button> : null}
-          {submitError ? <p role="alert" className="mt-4 rounded-xl bg-clay-100 px-4 py-3 text-sm text-clay-600">{submitError}</p> : null}
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button className={secondaryButtonClassName} onClick={() => void go(items.length - 1)}>Kembali</button>
-            <button className={primaryButtonClassName} disabled={missing.length > 0 || submitting || save === "conflict"} onClick={() => void submit()}>{submitting ? "Mengirim…" : "Kirim jawaban"}</button>
+          {missing.length ? <button type="button" className={`${secondaryButtonClassName} mt-3 w-full`} onClick={() => commit({ ...answersRef.current, ...Object.fromEntries(missing.map((item) => [item.id, skippedAnswer(item, answersRef.current[item.id]?.assistance ?? pendingAssistance[item.id] ?? "none")])) })}>Lewati semua yang belum diisi</button> : null}
+          {submitError ? <p role="alert" className="mt-3 rounded-2xl bg-clay-100 px-3.5 py-2.5 text-[12px] text-clay-600">{submitError}</p> : null}
+          <div className="mt-4 flex flex-col gap-2">
+            <button className={`${primaryButtonClassName} w-full`} disabled={missing.length > 0 || submitting || save === "conflict"} onClick={() => void submit()}>{submitting ? "Mengirim…" : "Kirim jawaban"}</button>
+            <button className={`${secondaryButtonClassName} w-full`} onClick={() => void go(items.length - 1)}>Kembali</button>
           </div>
         </section>
       </>
@@ -174,27 +179,27 @@ export function Questionnaire() {
   return (
     <>{banner}
       <Header step={step} total={items.length} save={save} onPause={pause} onRetry={() => void flush()} onReload={() => void load()} />
-      <section className="rounded-3xl bg-white p-6 shadow-sm sm:p-8">
-        {item.sensitive ? <p className="mb-4 rounded-xl bg-sky-soft-100 px-4 py-3 text-sm text-ink-700">Pertanyaan berikut mungkin terasa berat — {SKIP_REMINDER}.</p> : null}
-        <p className="text-sm font-medium text-sage-700">{wire.module === "A" ? "Kegiatan" : "Pertanyaan"} {step + 1}</p>
-        <h1 className="mt-2 text-2xl leading-snug font-semibold text-ink-900 sm:text-3xl">{item.text}</h1>
-        <div className="mt-6">
+      <section className="shadow-card rounded-3xl bg-white p-5">
+        {item.sensitive ? <p className="mb-3 rounded-2xl bg-sky-soft-100 px-3.5 py-2.5 text-[12px] leading-relaxed text-ink-700">Pertanyaan berikut mungkin terasa berat — {SKIP_REMINDER}.</p> : null}
+        <p className="text-[12px] font-medium text-sage-700">{wire.module === "A" ? "Kegiatan" : "Pertanyaan"} {step + 1}</p>
+        <h1 className="mt-1.5 text-xl leading-snug font-semibold text-ink-900">{item.text}</h1>
+        <div className="mt-5">
           {answer?.state === "skipped" ? (
-            <div className="rounded-2xl border border-dashed border-cream-300 bg-cream-50 p-5 text-ink-700">{child ? "Kamu memilih melewati pertanyaan ini. Tidak apa-apa." : "Anda memilih melewati pertanyaan ini."} <button type="button" className="ml-2 font-medium text-sage-700 underline" onClick={() => clearAnswer(item.id)}>Jawab saja</button></div>
+            <div className="rounded-2xl border border-dashed border-cream-300 bg-cream-50 p-4 text-[13px] text-ink-700">{child ? "Kamu memilih melewati pertanyaan ini. Tidak apa-apa." : "Anda memilih melewati pertanyaan ini."} <button type="button" className="ml-1 font-medium text-sage-700 underline" onClick={() => clearAnswer(item.id)}>Jawab saja</button></div>
           ) : <ItemInput item={item} answer={answer} assistance={assistance} onChange={update} child={child} />}
         </div>
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-cream-200 pt-4">
-          {answer?.state !== "skipped" ? <button type="button" className="text-sm text-ink-500 underline" onClick={() => update(skippedAnswer(item, assistance))}>{child ? "Aku belum ingin menjawab" : "Tidak ingin menjawab"}</button> : <span />}
-          <label className="flex items-center gap-2 text-xs text-ink-500">Diisi pendamping:
-            <select value={assistance} className="rounded-lg border border-cream-300 bg-white px-2 py-1" onChange={(event) => { const value = event.target.value as Assistance; if (answer) update({ ...answer, assistance: value } as Answer); else setPendingAssistance((current) => ({ ...current, [item.id]: value })); }}>
+        <div className="mt-5 flex flex-col gap-2.5 border-t border-cream-200 pt-3.5">
+          {answer?.state !== "skipped" ? <button type="button" className="self-start text-[13px] text-ink-500 underline" onClick={() => update(skippedAnswer(item, assistance))}>{child ? "Aku belum ingin menjawab" : "Tidak ingin menjawab"}</button> : null}
+          <label className="flex items-center justify-between gap-2 text-[11px] text-ink-500">Diisi pendamping:
+            <select value={assistance} className="min-h-[36px] rounded-xl border border-cream-200 bg-white px-2" onChange={(event) => { const value = event.target.value as Assistance; if (answer) update({ ...answer, assistance: value } as Answer); else setPendingAssistance((current) => ({ ...current, [item.id]: value })); }}>
               {Object.entries(ASSISTANCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
         </div>
       </section>
-      <div className="mt-5 flex justify-between gap-3">
-        <button className={`${secondaryButtonClassName} px-6 py-3`} onClick={() => void go(step - 1)} disabled={step === 0}>← Kembali</button>
-        <button className={`${primaryButtonClassName} px-6 py-3`} onClick={() => void go(step + 1)}>{step === items.length - 1 ? "Periksa jawaban →" : "Lanjut →"}</button>
+      <div className="mt-4 flex gap-2 pb-2">
+        <button className={`${secondaryButtonClassName} flex-1 py-3`} onClick={() => void go(step - 1)} disabled={step === 0}>← Kembali</button>
+        <button className={`${primaryButtonClassName} flex-1 py-3`} onClick={() => void go(step + 1)}>{step === items.length - 1 ? "Periksa jawaban →" : "Lanjut →"}</button>
       </div>
     </>
   );
@@ -210,14 +215,14 @@ function ItemInput({ item, answer, assistance, onChange, child }: { item: Item; 
   if (item.kind === "text") {
     const value = answer?.kind === "text" ? answer.value ?? "" : "";
     return <textarea autoFocus value={value} maxLength={4000} rows={6} placeholder={child ? "Tulis di sini…" : "Tulis jawaban Anda di sini…"} aria-label="Jawaban"
-      className="w-full rounded-2xl border-2 border-cream-300 bg-cream-50 p-4 text-lg focus:border-sage-500 focus:outline-none"
+      className="w-full rounded-2xl border-2 border-cream-200 bg-cream-50 p-3.5 text-base focus:border-sage-500 focus:outline-none"
       onChange={(event) => onChange({ itemId: item.id, kind: "text", state: "answered", assistance, value: event.target.value })} />;
   }
   if (item.kind === "likert") {
     const value = answer?.kind === "likert" ? answer.value : null;
-    return <div className="grid gap-2 sm:grid-cols-5" role="radiogroup" aria-label="Pilihan jawaban">
+    return <div className="grid gap-2" role="radiogroup" aria-label="Pilihan jawaban">
       {LIKERT_LABELS.map((label, index) => <button key={label} type="button" role="radio" aria-checked={value === index + 1} onClick={() => onChange({ itemId: item.id, kind: "likert", state: "answered", assistance, value: index + 1 })}
-        className={`rounded-2xl border-2 px-3 py-4 text-sm font-medium ${value === index + 1 ? "border-sage-600 bg-sage-100 text-sage-700" : "border-cream-300 bg-white text-ink-700 hover:bg-cream-50"}`}>{label}</button>)}
+        className={`min-h-[48px] rounded-2xl border-2 px-3 py-3 text-[13px] font-medium ${value === index + 1 ? "border-sage-500 bg-sage-100 text-sage-700" : "border-cream-200 bg-white text-ink-700 active:bg-cream-50"}`}>{label}</button>)}
     </div>;
   }
   if (item.kind === "emotion") {
@@ -260,7 +265,7 @@ function DrawingActivity({ answer, assistance, onChange }: { answer: MediaAnswer
   );
   return (
     <div className="space-y-4">
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2">
         <button type="button" onClick={() => setMode("canvas")} className={`rounded-2xl border-2 p-4 text-left ${mode === "canvas" ? "border-sage-600 bg-sage-100" : "border-cream-300"}`}><span className="block text-2xl">🖍️</span><span className="font-medium">Gambar di layar</span></button>
         <button type="button" onClick={() => setMode("photo")} className={`rounded-2xl border-2 p-4 text-left ${mode === "photo" ? "border-sage-600 bg-sage-100" : "border-cream-300"}`}><span className="block text-2xl">📷</span><span className="font-medium">Foto gambar di kertas</span></button>
         <button type="button" onClick={() => { setMode(null); onChange({ itemId: "A02", kind: "media", state: "answered", assistance, activityMode: "paper_pending", initialAttachmentId: null }); }} className="rounded-2xl border-2 border-cream-300 p-4 text-left"><span className="block text-2xl">📄</span><span className="font-medium">Gambar di kertas, foto menyusul</span></button>
@@ -276,26 +281,26 @@ function Header({ step, total, save, onPause, onRetry, onReload }: { step: numbe
   const label = { idle: "", saving: "Menyimpan…", saved: "Tersimpan ✓", error: "Gagal menyimpan", conflict: "Jawaban berubah di tempat lain", expired: "Sesi berakhir" }[save];
   return (
     <div className="mb-4 space-y-2">
-      <div className="flex items-center justify-between gap-3 text-sm">
+      <div className="flex items-center justify-between gap-2 text-[11px]">
         <span className="text-ink-500">{Math.min(step + 1, total)} dari {total}</span>
         <span className="flex items-center gap-3">
           <span role="status" aria-live="polite" className={save === "error" || save === "conflict" ? "text-clay-600" : "text-ink-500"}>{label}</span>
           {save === "error" ? <button type="button" className="text-sage-700 underline" onClick={onRetry}>Coba lagi</button> : null}
           {save === "conflict" ? <button type="button" className="text-sage-700 underline" onClick={onReload}>Muat ulang jawaban tersimpan</button> : null}
-          <button type="button" className="rounded-full border border-cream-300 bg-white px-3 py-1 text-ink-700" onClick={onPause}>⏸ Istirahat</button>
+          <button type="button" className="min-h-[36px] rounded-full border border-cream-200 bg-white px-3 text-ink-700" onClick={onPause}>⏸ Istirahat</button>
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-cream-200" aria-hidden="true"><div className="h-full rounded-full bg-sage-600 transition-all" style={{ width: `${(Math.min(step, total) / total) * 100}%` }} /></div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-cream-200" aria-hidden="true"><div className="gradient-brand h-full rounded-full transition-all" style={{ width: `${(Math.min(step, total) / total) * 100}%` }} /></div>
     </div>
   );
 }
 
 function Notice({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (
-    <section className="rounded-3xl bg-white p-8 text-center shadow-sm sm:p-12">
-      <h1 className="text-2xl font-semibold text-ink-900">{title}</h1>
-      <p className="mx-auto mt-3 max-w-md text-ink-700">{body}</p>
-      {action ? <div className="mt-6 flex justify-center">{action}</div> : null}
+    <section className="shadow-card rounded-3xl bg-white p-6 text-center">
+      <h1 className="text-xl font-semibold text-ink-900">{title}</h1>
+      <p className="mt-2.5 text-[13px] leading-relaxed text-ink-700">{body}</p>
+      {action ? <div className="mt-5 flex justify-center">{action}</div> : null}
     </section>
   );
 }

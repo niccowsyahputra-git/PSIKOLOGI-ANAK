@@ -111,10 +111,10 @@ export function ProfileForm({ initial }: { initial: OrganizationProfileView }) {
         hasil asesmen yang dicetak. Kosongkan kolom untuk menghapus isinya.
       </p>
 
-      <form onSubmit={handleSubmit} className="mt-4 grid gap-4 md:grid-cols-2">
+      <form onSubmit={handleSubmit} className="mt-4 grid gap-4">
         {message ? (
           <p
-            className="rounded-xl border border-clay-500/30 bg-clay-100 px-3 py-2 text-sm text-clay-600 md:col-span-2"
+            className="rounded-xl border border-clay-500/30 bg-clay-100 px-3 py-2 text-sm text-clay-600"
             role="alert"
           >
             {message}
@@ -122,7 +122,7 @@ export function ProfileForm({ initial }: { initial: OrganizationProfileView }) {
         ) : null}
         {success ? (
           <p
-            className="rounded-xl border border-sage-200 bg-sage-50 px-3 py-2 text-sm text-sage-700 md:col-span-2"
+            className="rounded-xl border border-sage-200 bg-sage-50 px-3 py-2 text-sm text-sage-700"
             role="status"
           >
             {success}
@@ -292,7 +292,7 @@ export function ProfileForm({ initial }: { initial: OrganizationProfileView }) {
           />
         </Field>
 
-        <div className="flex flex-wrap items-center gap-3 md:col-span-2">
+        <div className="flex flex-wrap items-center gap-3">
           <button type="submit" disabled={pending} className={primaryButtonClassName}>
             {pending ? "Menyimpan…" : "Simpan profil panti"}
           </button>

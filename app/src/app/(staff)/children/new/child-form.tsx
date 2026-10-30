@@ -49,14 +49,14 @@ export function ChildForm({ liveIntakeEnabled }: { liveIntakeEnabled: boolean })
           {ageMode === "birth" ? (
             <Field label="Tanggal lahir" htmlFor="birthDate"><input id="birthDate" name="birthDate" type="date" max={today} required className={inputClassName} /></Field>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3">
               <Field label="Usia perkiraan (tahun)" htmlFor="estimatedAge"><input id="estimatedAge" name="estimatedAge" type="number" min={0} max={100} required className={inputClassName} /></Field>
               <Field label="Diperkirakan per tanggal" htmlFor="ageReferenceDate"><input id="ageReferenceDate" name="ageReferenceDate" type="date" max={today} defaultValue={today} required className={inputClassName} /></Field>
             </div>
           )}
           <p className="text-xs text-ink-500">4–8 tahun → Modul A · 9–12 → Modul B · 13–18 → Modul C. Usia dibekukan saat siklus asesmen dimulai.</p>
         </fieldset>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3">
           <Field label="Jenis kelamin" htmlFor="sex">
             <select id="sex" name="sex" className={inputClassName} defaultValue="unknown"><option value="unknown">Tidak dicatat</option><option value="female">Perempuan</option><option value="male">Laki-laki</option></select>
           </Field>

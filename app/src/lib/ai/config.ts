@@ -102,7 +102,7 @@ export function aiConfigFingerprint(input: AiFingerprintInput): string {
       input.baseUrl ?? "",
       input.model ?? "",
       input.extension,
-      input.temperature.toFixed(2),
+      String(input.temperature),
       String(input.maxTokens),
       String(input.timeoutSeconds),
       input.keyFingerprint ?? "",

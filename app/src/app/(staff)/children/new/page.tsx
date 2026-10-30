@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { PageHeader, Skeleton } from "@/components/ui";
+import { LoadingState, PageHeader } from "@/components/ui";
 import { requireStaffSession } from "@/lib/authz";
 import { getEnv } from "@/lib/env";
 import { ChildForm } from "./child-form";
@@ -14,9 +14,9 @@ async function Gate() {
 
 export default function NewChildPage() {
   return (
-    <div className="max-w-2xl">
+    <>
       <PageHeader title="Daftarkan anak asuh" description="Profil disimpan sebagai draft. Verifikasi profil sebelum memulai siklus asesmen." />
-      <Suspense fallback={<Skeleton rows={8} />}><Gate /></Suspense>
-    </div>
+      <Suspense fallback={<LoadingState label="Menyiapkan formulir…" rows={6} />}><Gate /></Suspense>
+    </>
   );
 }

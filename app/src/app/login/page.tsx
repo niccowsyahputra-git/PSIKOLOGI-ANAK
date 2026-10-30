@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AppContainer, ScrollableContent } from "@/components/app-shell";
 import { Badge, Card } from "@/components/ui";
 import { LoginForm } from "./login-form";
 
@@ -12,31 +13,36 @@ export const metadata: Metadata = {
  */
 export default function LoginPage() {
   return (
-    <main className="flex flex-1 items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="mb-6 text-center">
-          <p className="text-xs font-semibold tracking-[0.18em] text-sage-600 uppercase">
-            Asesmen Psikososial Panti
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink-900">
-            Masuk ke sistem lokal
-          </h1>
-          <p className="mt-2 text-sm text-ink-500">
-            Aplikasi ini berjalan sepenuhnya di komputer panti. Tidak ada data
-            yang dikirim ke internet.
-          </p>
-        </div>
+    <AppContainer>
+      <ScrollableContent roomy>
+        <div className="flex min-h-full flex-col justify-center py-6">
+          <div className="mb-5 text-center">
+            <span className="gradient-brand shadow-float mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[20px] text-lg font-semibold text-white">
+              AP
+            </span>
+            <p className="text-[11px] font-semibold tracking-[0.18em] text-sage-600 uppercase">
+              Asesmen Psikososial Panti
+            </p>
+            <h1 className="mt-1.5 text-[22px] font-semibold tracking-tight text-ink-900">
+              Masuk ke sistem lokal
+            </h1>
+            <p className="mt-2 text-[12px] leading-relaxed text-ink-500">
+              Aplikasi ini berjalan sepenuhnya di komputer panti. Tidak ada data
+              yang dikirim ke internet.
+            </p>
+          </div>
 
-        <Card className="bg-white">
-          <LoginForm />
-        </Card>
+          <Card>
+            <LoginForm />
+          </Card>
 
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-ink-500">
-          <Badge tone="sage">LOCAL ONLY</Badge>
-          <Badge tone="sky">AI dalam mode simulasi</Badge>
-          <Badge tone="neutral">Cetak laporan A4</Badge>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
+            <Badge tone="sage">LOCAL ONLY</Badge>
+            <Badge tone="sky">AI dalam mode simulasi</Badge>
+            <Badge tone="neutral">Cetak laporan A4</Badge>
+          </div>
         </div>
-      </div>
-    </main>
+      </ScrollableContent>
+    </AppContainer>
   );
 }

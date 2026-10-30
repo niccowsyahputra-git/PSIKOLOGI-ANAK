@@ -24,12 +24,12 @@ export function Exchange({ sessionId }: { sessionId: string }) {
       .catch(() => setError(token ? "Tautan ini sudah dipakai, dicabut, atau kedaluwarsa." : "Tautan sesi tidak lengkap."));
   }, [sessionId]);
 
-  if (!error) return <p className="py-20 text-center text-lg text-ink-500">Menyiapkan sesi…</p>;
+  if (!error) return <p className="py-20 text-center text-[15px] text-ink-500" role="status">Menyiapkan sesi…</p>;
   return (
-    <section className="rounded-3xl bg-white p-8 text-center shadow-sm sm:p-12">
-      <h1 className="text-2xl font-semibold text-ink-900">Sesi tidak dapat dibuka</h1>
-      <p className="mx-auto mt-3 max-w-md text-ink-700">{error} Minta pendamping membuat tautan sesi baru dari aplikasi staf.</p>
-      <div className="mt-6 flex justify-center"><Link href="/" className={secondaryButtonClassName}>Ke halaman awal</Link></div>
+    <section className="shadow-card rounded-3xl bg-white p-6 text-center">
+      <h1 className="text-xl font-semibold text-ink-900">Sesi tidak dapat dibuka</h1>
+      <p className="mt-2.5 text-[13px] leading-relaxed text-ink-700">{error} Minta pendamping membuat tautan sesi baru dari aplikasi staf.</p>
+      <Link href="/" className={`${secondaryButtonClassName} mt-5 w-full`}>Ke halaman awal</Link>
     </section>
   );
 }

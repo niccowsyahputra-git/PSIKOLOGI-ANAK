@@ -13,6 +13,12 @@ export const PERMISSION_MATRIX = {
   "ai.regenerate": ["ketua", "psikolog", "admin"],
   "ai.mark_needs_revision": ["pengasuh", "ketua", "psikolog", "admin"],
   "ai.review.decide": ["ketua", "psikolog"],
+  /**
+   * Grounded discussion with the local assistant. Every staff role may use it
+   * because it only reads rows the role can already open in the app; it is not
+   * a decision capability and it produces no reviewable result.
+   */
+  "ai.chat": ["pengasuh", "ketua", "psikolog", "admin"],
   "psych.analysis.write": ["psikolog"],
   "psych.analysis.draft.read": ["psikolog"],
   "psych.analysis.final.read": ["pengasuh", "ketua", "psikolog", "admin"],
@@ -31,6 +37,13 @@ export const PERMISSION_MATRIX = {
   "admin.users": ["admin"],
   "admin.general_settings": ["admin"],
   "admin.audit.read": ["admin"],
+  "form.read": ["pengasuh", "ketua", "psikolog", "admin"],
+  "form.draft.read": ["psikolog", "admin"],
+  "form.write": ["admin"],
+  "form.review": ["psikolog"],
+  "form.publish": ["admin"],
+  "form.revoke": ["ketua", "psikolog"],
+  "form.ai": ["admin"],
   "instrument.approve": ["psikolog"],
   "instrument.revoke": ["ketua", "psikolog"],
   "export.csv": ["ketua", "psikolog", "admin"],

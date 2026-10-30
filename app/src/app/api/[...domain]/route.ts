@@ -11,9 +11,16 @@ import { assertCan } from "@/lib/permissions";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { INSTRUMENT_DEFINITION } from "@/lib/instruments";
 import * as service from "@/server/services/assessment.service";
+import * as aiService from "@/server/services/ai.service";
+import * as aiChatService from "@/server/services/ai-chat.service";
 import { uploadMedia, mediaContent, MAX_IMAGE_BYTES } from "@/server/services/media.service";
 import { recordAudit } from "@/server/services/audit.service";
 import { reasonInput } from "@/lib/validation/assessment.schema";
+import { boundedJson } from "@/lib/bounded-body";
+import * as templates from "@/server/services/template.service";
+import * as responses from "@/server/services/response.service";
+import * as questionAi from "@/server/services/question-ai.service";
+import { responseMediaContent, responseUploadBody, uploadResponseMedia } from "@/server/services/response-media.service";
 
 async function body(request: Request) {
   if (Number(request.headers.get("content-length") ?? 0) > 100000) throw new ValidationError("Permintaan terlalu besar");
@@ -32,13 +39,27 @@ const handler = withApiHandler(async (request: NextRequest, context: { params: P
   }
   const jar = await cookies();
   if (domain === "intake") {
-    if (id === "exchange" && method === "POST") {
+    if (id === "exchange" && !action && method === "POST") {
       const data = z.object({ sessionId: z.uuid(), token: z.string().min(20).max(100) }).strict().parse(await body(request)); const staff = await getStaffSession();
-      const result = await service.exchangeIntake(data.sessionId, data.token, staff ? toStaffActor(staff) : null);
+      const exchange = data.token.startsWith(responses.DYNAMIC_TOKEN_PREFIX) ? responses.exchangeDynamic : service.exchangeIntake;
+      const result = await exchange(data.sessionId, data.token, staff ? toStaffActor(staff) : null);
       const response = jsonOk({ exchanged: true }); response.cookies.set(service.INTAKE_COOKIE, result.secret, { httpOnly: true, sameSite: "strict", secure: new URL(getEnv().appBaseUrl).protocol === "https:", path: "/", expires: result.expiresAt });
       for (const name of ["better-auth.session_token", "__Secure-better-auth.session_token", "better-auth.session_data"]) response.cookies.set(name, "", { path: "/", maxAge: 0, expires: new Date(0) }); return response;
     }
-    const scoped = await service.resolveIntake(jar.get(service.INTAKE_COOKIE)?.value); const db = await getDbReady(); const actor = { type: "participant" as const, sessionId: scoped.id };
+    const intakeSecret = jar.get(service.INTAKE_COOKIE)?.value;
+    if (intakeSecret?.startsWith(responses.DYNAMIC_TOKEN_PREFIX)) {
+      if (id === "end" && !action && method === "POST") { const response = jsonOk(await responses.endDynamicSession(intakeSecret)); response.cookies.set(service.INTAKE_COOKIE, "", { path: "/", maxAge: 0, expires: new Date(0) }); return response; }
+      const session = await responses.resolveDynamic(intakeSecret); const participant = { type: "participant" as const, sessionId: session.id };
+      if (id === "current" && !action && method === "GET") return jsonOk(await responses.dynamicWire(session));
+      if (!action && (id === "current" && method === "PATCH" || id === "submit" && method === "POST")) {
+        await responses.saveResponse(session.organizationId, session.responseId, await boundedJson(request), participant, id === "submit");
+        return jsonOk(await responses.dynamicWire(session));
+      }
+      if (id === "attachments" && action && extra === "content" && method === "GET") return responseMediaContent(session.organizationId, action, participant);
+      if (id === "attachments" && !action && method === "POST") { const upload = await responseUploadBody(request); if (upload.responseId !== null) throw new ValidationError("Response ditentukan sesi, bukan klien."); return jsonOk(await uploadResponseMedia(session.organizationId, session.responseId, upload.questionId, upload.file, participant)); }
+      throw new NotFoundError();
+    }
+    const scoped = await service.resolveIntake(intakeSecret); const db = await getDbReady(); const actor = { type: "participant" as const, sessionId: scoped.id };
     if (id === "current" && method === "GET") return jsonOk(service.participantWire(await service.assessment(db, scoped.organizationId, scoped.assessmentId), await service.cycle(db, scoped.organizationId, scoped.cycleId)));
     if ((id === "current" && method === "PATCH") || (id === "submit" && method === "POST")) { const a = await service.saveAssessment(db, scoped.organizationId, scoped.assessmentId, await body(request), actor, id === "submit"); return jsonOk(service.participantWire(a, await service.cycle(db, scoped.organizationId, scoped.cycleId))); }
     if (id === "attachments" && action && extra === "content" && method === "GET") return mediaContent(scoped.organizationId, action, scoped);
@@ -48,6 +69,56 @@ const handler = withApiHandler(async (request: NextRequest, context: { params: P
   }
   if (jar.get(service.INTAKE_COOKIE)?.value) throw new ForbiddenError("Sesi peserta tidak dapat mengakses aplikasi staf");
   const contextStaff = await requireStaffSessionForApi(); const actor = toStaffActor(contextStaff); const db = await getDbReady(); await service.activeActor(db, actor);
+  if (domain === "assessment-responses") {
+    if (extra) throw new NotFoundError();
+    if (!id && method === "GET") return jsonOk(await responses.listResponses(actor, Object.fromEntries(request.nextUrl.searchParams)));
+    if (!id && method === "POST") return jsonOk(await responses.createResponse(actor, await boundedJson(request)), { status: 201 });
+    if (id && !action && method === "GET") return jsonOk(await responses.responseDetail(actor, id));
+    if (id && !action && method === "PATCH" || id && action === "submit" && method === "POST") return jsonOk(await responses.saveResponse(actor.organizationId, id, await boundedJson(request), { type: "staff", staff: actor }, action === "submit"));
+    if (id && action === "sessions" && method === "POST") { z.object({}).strict().parse(await boundedJson(request)); return jsonOk(await responses.createResponseSession(actor, id)); }
+    if (id && action === "withdraw" && method === "POST") return jsonOk(await responses.withdrawResponse(actor, id, await boundedJson(request)));
+    if (id && action === "corrections" && method === "POST") return jsonOk(await responses.correctResponse(actor, id, await boundedJson(request)), { status: 201 });
+    throw new NotFoundError();
+  }
+  if (domain === "response-sessions") {
+    if (id && action === "revoke" && !extra && method === "POST") return jsonOk(await responses.revokeResponseSession(actor, id, await boundedJson(request)));
+    throw new NotFoundError();
+  }
+  if (domain === "response-attachments") {
+    if (extra) throw new NotFoundError();
+    if (id && action === "content" && method === "GET") return responseMediaContent(actor.organizationId, id, { type: "staff", staff: actor });
+    if (!id && method === "POST") { const upload = await responseUploadBody(request); const responseId = z.uuid().parse(upload.responseId); return jsonOk(await uploadResponseMedia(actor.organizationId, responseId, upload.questionId, upload.file, { type: "staff", staff: actor })); }
+    throw new NotFoundError();
+  }
+  if (domain === "assessment-templates") {
+    if (extra) throw new NotFoundError();
+    if (!id && method === "GET") return jsonOk(await templates.listTemplates(actor, Object.fromEntries(request.nextUrl.searchParams)));
+    if (!id && method === "POST") return jsonOk(await templates.createTemplate(actor, await boundedJson(request)), { status: 201 });
+    if (id && !action && method === "GET") return jsonOk(await templates.templateDetail(actor, id));
+    if (id && action === "versions" && method === "POST") return jsonOk(await templates.cloneVersion(actor, id, await boundedJson(request)), { status: 201 });
+    if (id && action === "active" && method === "GET") return jsonOk(await templates.activeTemplate(actor, id));
+    if (id && action === "history" && method === "GET") return jsonOk(await templates.templateDetail(actor, id));
+    if (id && action === "audit" && method === "GET") return jsonOk(await templates.templateAuditHistory(actor, id));
+    throw new NotFoundError();
+  }
+  if (domain === "ai-question-jobs") {
+    if (id && !action && !extra && method === "GET") return jsonOk(await questionAi.questionJobDetail(actor, id));
+    throw new NotFoundError();
+  }
+  if (domain === "ai-question-candidates") {
+    if (id && action === "decision" && !extra && method === "POST") return jsonOk(await questionAi.decideQuestionCandidate(actor, id, await boundedJson(request)));
+    throw new NotFoundError();
+  }
+  if (domain === "template-versions") {
+    if (!id || extra) throw new NotFoundError();
+    if (action === "ai-drafts" && method === "POST") return jsonOk(await questionAi.generateQuestionDrafts(actor, id, await boundedJson(request)), { status: 201 });
+    if (action === "ai-drafts" && method === "GET") return jsonOk(await questionAi.listQuestionJobs(actor, id));
+    if (!action && method === "GET") return jsonOk(await templates.versionDetail(actor, id));
+    if (!action && method === "PATCH") return jsonOk(await templates.saveDraft(actor, id, await boundedJson(request)));
+    if ((action === "validate" || action === "preview") && method === "POST") return jsonOk(await templates.validateDraft(actor, id, await boundedJson(request)));
+    if (method === "POST" && ["submit-review", "review", "publish", "archive", "revoke"].includes(action)) return jsonOk(await templates.transitionVersion(actor, id, action as "submit-review" | "review" | "publish" | "archive" | "revoke", await boundedJson(request)));
+    throw new NotFoundError();
+  }
   if (domain === "children" || domain === "guardians") {
     if (!id && method === "GET") { const page = z.coerce.number().int().min(1).max(10000).default(1).parse(request.nextUrl.searchParams.get("page") ?? undefined); return jsonOk(await service.listProfiles(actor, domain, request.nextUrl.searchParams.get("q") ?? "", page)); }
     if (!id && method === "POST") return jsonOk(await service.createProfile(actor, domain, await body(request)), { status: 201 });
@@ -74,6 +145,20 @@ const handler = withApiHandler(async (request: NextRequest, context: { params: P
     if (action === "withdraw" && method === "POST") { assertCan(actor.role, "assessment.withdraw"); reasonInput.parse(await body(request)); await db.transaction(async (tx) => { await service.assessment(tx, actor.organizationId, id); await tx.update(s.assessments).set({ status: "withdrawn" }).where(eq(s.assessments.id, id)); await tx.update(s.intakeSessions).set({ revokedAt: new Date() }).where(eq(s.intakeSessions.assessmentId, id)); await recordAudit(tx, { organizationId: actor.organizationId, actor: { type: "staff", membershipId: actor.membershipId }, action: "assessment.withdraw", entityType: "assessments", entityId: id }); }); return jsonOk({ withdrawn: true }); }
   }
   if (domain === "intake-sessions" && action === "revoke" && method === "POST") return jsonOk(await service.revokeSession(actor, id, await body(request)));
+  if (domain === "ai") {
+    if (id === "availability" && method === "GET") return jsonOk(await aiService.aiAvailability(actor));
+    if (id === "analyses" && !action && method === "POST") return jsonOk(await aiService.generateAnalysis(actor, await body(request)), { status: 201 });
+    if (id === "analyses" && action && !extra && method === "GET") return jsonOk(await aiService.analysisDetail(actor, action));
+    if (id === "analyses" && action && extra === "reviews" && method === "POST") return jsonOk(await aiService.reviewAnalysis(actor, action, await body(request)), { status: 201 });
+  }
+  // Own top-level domain rather than `ai/chat/threads/...`: the router above
+  // rejects more than four segments, which that nesting would exceed.
+  if (domain === "ai-chat") {
+    if (!id && method === "GET") return jsonOk({ threads: await aiChatService.listThreads(actor) });
+    if (!id && method === "POST") return jsonOk(await aiChatService.createThread(actor, await body(request)), { status: 201 });
+    if (id && !action && method === "GET") return jsonOk(await aiChatService.threadDetail(actor, id));
+    if (id && action === "messages" && !extra && method === "POST") return jsonOk(await aiChatService.postMessage(actor, id, await body(request)), { status: 201 });
+  }
   if (domain === "instruments") {
     assertCan(actor.role, "assessment.internal.read"); await service.ensureInstrument(db);
     if (method === "GET") return jsonOk({ definition: INSTRUMENT_DEFINITION, contentHash: (await db.select().from(s.instrumentVersions))[0].contentHash, approvals: await db.select().from(s.instrumentApprovals).where(eq(s.instrumentApprovals.organizationId, actor.organizationId)).orderBy(desc(s.instrumentApprovals.approvedAt)) });

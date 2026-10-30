@@ -21,3 +21,9 @@ export const CONSENT_TYPES: Record<string, string> = { intake: "Persetujuan inta
 export const CONSENT_STATUS: Record<string, string> = { granted: "Diberikan", declined: "Ditolak", withdrawn: "Ditarik", pending_authority_review: "Menunggu review kewenangan" };
 export const ASSISTANCE_LABELS: Record<string, string> = { none: "Dijawab sendiri", read_aloud: "Pertanyaan dibacakan", scribed: "Jawaban dituliskan pendamping" };
 export const RELATIONSHIPS = ["Ibu", "Ayah", "Nenek", "Kakek", "Bibi", "Paman", "Kakak", "Wali lain"] as const;
+export const AI_SCOPE_LABELS: Record<string, string> = { child: "Jawaban anak asuh", guardian: "Jawaban orang tua / wali", combined: "Gabungan anak dan wali" };
+export const AI_TIMEFRAME_LABELS: Record<string, string> = { segera: "Segera", minggu_ini: "Minggu ini", tindak_lanjut: "Tindak lanjut" };
+/** Deliberately about how much a human should read, never a clinical risk level. */
+export const AI_PRIORITY_LABELS: Record<string, string> = { belum_dapat_ditentukan: "Belum dapat ditentukan", rutin: "Pendampingan rutin", perlu_tinjauan: "Perlu ditinjau staf", segera: "Perlu perhatian segera" };
+export const AI_DISPOSITION_LABELS: Record<string, string> = { support_approved: "Disetujui sebagai bahan dukungan", needs_revision: "Perlu perbaikan", rejected: "Ditolak" };
+export const AI_ORIGIN_LABELS: Record<string, string> = { mock: "Simulasi lokal (bukan AI nyata)", local_model: "Model lokal", remote_model: "Model jarak jauh" };
